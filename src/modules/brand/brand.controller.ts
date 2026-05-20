@@ -6,14 +6,15 @@ export const createBrand = async (
   res: Response
 ) => {
   try {
-    const result = await usecase.createBrandUsecase({
-      ...req.body,
-      userId: req.user?.id,
-    });
+    const result =
+      await usecase.createBrandUsecase({
+        ...req.body,
+        userId: req.user?.id,
+      });
 
     return res.status(201).json({
       success: true,
-      message: "Brand created successfully",
+      message: "Brand(s) processed successfully",
       data: result,
     });
   } catch (error: any) {
@@ -29,10 +30,10 @@ export const getBrandById = async (
   res: Response
 ) => {
   try {
-    const id = String(req.params.id);
-
     const result =
-      await usecase.getBrandByIdUsecase(id);
+      await usecase.getBrandByIdUsecase(
+        String(req.params.id)
+      );
 
     return res.status(200).json({
       success: true,
@@ -51,13 +52,14 @@ export const updateBrand = async (
   res: Response
 ) => {
   try {
-    const id = String(req.params.id);
-
     const result =
-      await usecase.updateBrandUsecase(id, {
-        ...req.body,
-        userId: req.user?.id,
-      });
+      await usecase.updateBrandUsecase(
+        String(req.params.id),
+        {
+          ...req.body,
+          userId: req.user?.id,
+        }
+      );
 
     return res.status(200).json({
       success: true,
@@ -77,9 +79,9 @@ export const deleteBrand = async (
   res: Response
 ) => {
   try {
-    const id = String(req.params.id);
-
-    await usecase.deleteBrandUsecase(id);
+    await usecase.deleteBrandUsecase(
+      String(req.params.id)
+    );
 
     return res.status(200).json({
       success: true,

@@ -1,8 +1,21 @@
 import joi from "joi";
 
 export const createBrandSchema = joi.object({
-  name: joi.string().trim().required(),
   materialId: joi.string().uuid().required(),
+
+  brands: joi.array()
+    .items(
+      joi.object({
+        typeId: joi.string().uuid().optional(),
+
+        names: joi.array()
+          .items(joi.string().trim().required())
+          .min(1)
+          .required(),
+      })
+    )
+    .min(1)
+    .required(),
 });
 
 export const updateBrandSchema = joi.object({
