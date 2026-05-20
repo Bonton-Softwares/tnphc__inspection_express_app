@@ -368,6 +368,7 @@ model material_type {
   isActive    Boolean  @default(true) @map("is_active")
 
   materialGrades material_grade[]
+  materialBrandGrades material_brand_grade[]
 
   @@index([code])
 }
@@ -411,11 +412,15 @@ model material_brand_grade {
 
   gradeId         String?  @map("grade_id")
 
+  typeId          String?  @map("type_id")
+
   material        material @relation(fields: [materialId], references: [id])
 
   brand           brand    @relation(fields: [brandId], references: [id])
 
   grade           grade?   @relation(fields: [gradeId], references: [id])
+
+  type            material_type? @relation(fields: [typeId], references: [id])
 
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -430,6 +435,7 @@ model material_brand_grade {
   @@index([materialId])
   @@index([brandId])
   @@index([gradeId])
+  @@index([typeId])
 }
 enum status {
   TotalProjects

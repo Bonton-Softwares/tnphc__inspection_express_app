@@ -321,15 +321,24 @@ export const listMaterialsService = async (query: any) => {
       skip,
       take: pageSize,
       orderBy: { createdAt: "desc" },
-      include: {
-        materialGrades: {
-          where: { isActive: true },
-          include: {
-            grade: true,
-            materialType: true,
-          },
-        },
-      },
+     include: {
+  materialGrades: {
+    where: { isActive: true },
+    include: {
+      grade: true,
+      materialType: true,
+    },
+  },
+
+  materialBrandGrades: {
+    where: { isActive: true },
+    include: {
+      brand: true,
+      grade: true,
+      type: true,
+    },
+  },
+},
     }),
     prisma.material.count({ where }),
   ]);
@@ -346,33 +355,92 @@ export const listMaterialsService = async (query: any) => {
 // FORMAT HELPER — shapes response cleanly
 // ─────────────────────────────────────────────
 const formatMaterial = (material: any) => {
+  // Grades
   const grades = Array.from(
     new Map(
       material.materialGrades
         .filter((mg: any) => mg.grade)
-        .map((mg: any) => [mg.grade.id, { id: mg.grade.id, name: mg.grade.name }])
+        .map((mg: any) => [
+          mg.grade.id,
+          {
+            id: mg.grade.id,
+            name: mg.grade.name,
+          },
+        ])
     ).values()
   );
 
+  // Types
   const types = Array.from(
     new Map(
       material.materialGrades
         .filter((mg: any) => mg.materialType)
         .map((mg: any) => [
           mg.materialType.id,
-          { id: mg.materialType.id, name: mg.materialType.name },
+          {
+            id: mg.materialType.id,
+            name: mg.materialType.name,
+          },
         ])
     ).values()
   );
 
+  // Brands
+  const brands = Array.from(
+    new Map(
+      material.materialBrandGrades
+        .filter((mbg: any) => mbg.brand)
+        .map((mbg: any) => [
+          mbg.brand.id,
+          {
+            id: mbg.brand.id,
+            name: mbg.brand.name,
+          },
+        ])
+    ).values()
+  );
+
+  // Brand-wise mapping
+  const brandMappings = material.materialBrandGrades.map((mbg: any) => ({
+    id: mbg.id,
+
+    brand: mbg.brand
+      ? {
+          id: mbg.brand.id,
+          name: mbg.brand.name,
+        }
+      : null,
+
+    grade: mbg.grade
+      ? {
+          id: mbg.grade.id,
+          name: mbg.grade.name,
+        }
+      : null,
+
+    type: mbg.type
+      ? {
+          id: mbg.type.id,
+          name: mbg.type.name,
+        }
+      : null,
+  }));
+
   return {
     id: material.id,
     code: material.code,
-    name: material.name,
+
+    materialName: material.name,
+
     hasType: material.hasType,
     hasGrade: material.hasGrade,
+
     types,
     grades,
+    brands,
+
+    brandMappings,
+
     createdAt: material.createdAt,
     updatedAt: material.updatedAt,
   };
