@@ -1,9 +1,6 @@
 import { Router } from "express";
-
 import * as controller from "./material.controller";
-
 import { validateRequest } from "../../middleware/validateRequest";
-
 import {
   createMaterialSchema,
   updateMaterialSchema,
