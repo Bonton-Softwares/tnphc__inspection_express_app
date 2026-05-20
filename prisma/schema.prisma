@@ -298,6 +298,9 @@ model material {
 
   name        String   @unique @map("material_name") @db.VarChar(255)
 
+  hasGrade    Boolean  @default(false) @map("has_grade")
+  hasType     Boolean  @default(false) @map("has_type")
+
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -306,7 +309,8 @@ model material {
 
   isActive    Boolean  @default(true) @map("is_active")
 
-  brands      brand[]
+  materialGrades      material_grade[]
+  materialBrandGrades material_brand_grade[]
 
   @@index([code])
 }
@@ -315,12 +319,7 @@ model brand {
   id          String   @id @default(uuid()) @db.VarChar(36)
   code        Int      @unique @default(autoincrement())
 
-  name        String   @map("brand_name") @db.VarChar(255)
-
-  materialId  String
-  material    material @relation(fields: [materialId], references: [id])
-
-  grades      grade[]
+  name        String   @unique @map("brand_name") @db.VarChar(255)
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -330,20 +329,16 @@ model brand {
 
   isActive    Boolean  @default(true) @map("is_active")
 
-  @@unique([materialId, name])
+  materialBrandGrades material_brand_grade[]
 
   @@index([code])
-  @@index([materialId])
 }
 
 model grade {
   id          String   @id @default(uuid()) @db.VarChar(36)
   code        Int      @unique @default(autoincrement())
 
-  name        String   @map("grade_name") @db.VarChar(255)
-
-  brandId     String
-  brand       brand    @relation(fields: [brandId], references: [id])
+  name        String   @unique @map("grade_name") @db.VarChar(255)
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -353,12 +348,89 @@ model grade {
 
   isActive    Boolean  @default(true) @map("is_active")
 
-  @@unique([brandId, name])
+  materialGrades      material_grade[]
+  materialBrandGrades material_brand_grade[]
 
   @@index([code])
-  @@index([brandId])
+}
+model material_type {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  code        Int      @unique @default(autoincrement())
+
+  name        String   @unique @db.VarChar(255)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdById String?  @map("created_by")
+  updatedById String?  @map("updated_by")
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  materialGrades material_grade[]
+
+  @@index([code])
 }
 
+model material_grade {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+
+  materialId      String          @map("material_id")
+
+  gradeId         String?         @map("grade_id")
+
+  materialTypeId  String?         @map("material_type_id")
+
+  material        material        @relation(fields: [materialId], references: [id])
+
+  grade           grade?          @relation(fields: [gradeId], references: [id])
+
+  materialType    material_type?  @relation(fields: [materialTypeId], references: [id])
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  createdById     String?         @map("created_by")
+  updatedById     String?         @map("updated_by")
+
+  isActive        Boolean         @default(true) @map("is_active")
+
+  @@unique([materialId, gradeId, materialTypeId])
+
+  @@index([materialId])
+  @@index([gradeId])
+  @@index([materialTypeId])
+}
+
+model material_brand_grade {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+
+  materialId      String   @map("material_id")
+
+  brandId         String   @map("brand_id")
+
+  gradeId         String?  @map("grade_id")
+
+  material        material @relation(fields: [materialId], references: [id])
+
+  brand           brand    @relation(fields: [brandId], references: [id])
+
+  grade           grade?   @relation(fields: [gradeId], references: [id])
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdById     String?  @map("created_by")
+  updatedById     String?  @map("updated_by")
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  @@unique([materialId, brandId, gradeId])
+
+  @@index([materialId])
+  @@index([brandId])
+  @@index([gradeId])
+}
 enum status {
   TotalProjects
   CompletedProjects

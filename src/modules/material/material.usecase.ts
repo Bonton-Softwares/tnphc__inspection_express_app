@@ -8,10 +8,7 @@ export const getMaterialByIdUsecase = async (id: string) => {
   return service.getMaterialByIdService(id);
 };
 
-export const updateMaterialUsecase = async (
-  id: string,
-  data: any
-) => {
+export const updateMaterialUsecase = async (id: string, data: any) => {
   return service.updateMaterialService(id, data);
 };
 
