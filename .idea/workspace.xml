@@ -5,13 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="26fedbc6-dad5-42a5-a3a0-cc7fac288107" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/16a5344c-d5ce-4a04-a20f-336e08cac5f9.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/16a5344c-d5ce-4a04-a20f-336e08cac5f9/storage_v2/_src_/database/TNPHC_INSPECTION_DB.--_DVw.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/16a5344c-d5ce-4a04-a20f-336e08cac5f9/storage_v2/_src_/database/TNPHC_INSPECTION_DB.--_DVw/schema/information_schema.FNRwLQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/16a5344c-d5ce-4a04-a20f-336e08cac5f9/storage_v2/_src_/database/TNPHC_INSPECTION_DB.--_DVw/schema/pg_catalog.0S1ZNQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/16a5344c-d5ce-4a04-a20f-336e08cac5f9/storage_v2/_src_/database/TNPHC_INSPECTION_DB.--_DVw/schema/public.abK9xQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
