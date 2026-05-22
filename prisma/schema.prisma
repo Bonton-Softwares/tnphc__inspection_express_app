@@ -92,8 +92,7 @@ model District {
   createdById String?   @map("created_by") @db.VarChar(255)
   updatedById String?   @map("updated_by") @db.VarChar(255)
   isActive    Boolean   @default(true) @map("is_active")
-  projects    project[]
-  users       user[]
+  
 
   @@index([code])
   @@map("districts")
@@ -197,6 +196,28 @@ model LandSiteInspection {
   isActive    Boolean  @default(true) @map("is_active")
 
   project project @relation(fields: [projectId], references: [id])
+}
+
+enum DistrictType {
+  DISTRICT
+  CITY
+}
+
+enum BuildingType {
+  OFFICE
+  RESIDENCY
+  OTHERS
+}
+
+enum JurisdictionType {
+  DISTRICT
+  CITY
+  SPECIAL_UNIT
+}
+
+enum AccessType {
+  SPECIFIC
+  FULL_JURISDICTION
 }
 
 model project {
@@ -304,8 +325,7 @@ model officer {
   updatedById String?  @map("updated_by") @db.VarChar(255)
   isActive    Boolean  @default(true) @map("is_active")
 
-  users    user[]
-  projects project[]
+  
 }
 
 model department {
@@ -1161,6 +1181,10 @@ model project_history {
 // ======================================================
 // SUPER STRUCTURE TABLE
 // ======================================================
+
+
+
+
 
 model superStructure {
   id        String @id @default(uuid()) @db.VarChar(36)

@@ -22,38 +22,81 @@ export const createDistrictService = async (data: {
   });
 };
 
-export const getAllDistrictsService =  async (query: any) => {
-  const { pageNumber, pageSize, search } = query;
+export const getAllDistrictsService = async (query: any) => {
+  const {
+    pageNumber,
+    pageSize,
+    search,
+    type,
+    isDropdown,
+  } = query;
 
   const { skip, take } = pageConfig({
     pageNumber,
-    pageSize
+    pageSize,
   });
 
-  const whereCondition = {
+  const whereCondition: any = {
     isActive: true,
+
     ...(search && {
       name: {
         contains: search,
-        mode: "insensitive"
-      }
-    })
+        mode: "insensitive",
+      },
+    }),
+
+    ...(type && {
+      type,
+    }),
   };
 
-  const [data, totalRecords] = await Promise.all([
-    prisma.district.findMany({
+  // DROPDOWN API
+  if (isDropdown) {
+    const data = await prisma.masterDistrict.findMany({
       where: whereCondition,
+
+      select: {
+        id: true,
+        name: true,
+        type: true,
+      },
+
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return {
+      totalRecords: data.length,
+      data,
+    };
+  }
+
+  // LIST API
+  const [data, totalRecords] = await Promise.all([
+    prisma.masterDistrict.findMany({
+      where: whereCondition,
+
       select: {
         id: true,
         code: true,
         name: true,
-        createdAt: true
+        type: true,
+        createdAt: true,
       },
-      orderBy: { createdAt: "asc" },
+
+      orderBy: {
+        createdAt: "asc",
+      },
+
       skip,
       take,
     }),
-    prisma.district.count({ where: whereCondition }),
+
+    prisma.masterDistrict.count({
+      where: whereCondition,
+    }),
   ]);
 
   return {

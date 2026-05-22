@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="26fedbc6-dad5-42a5-a3a0-cc7fac288107" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/district/district.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/district/district.controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/district/district.schema.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/district/district.schema.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/district/district.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/district/district.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/district/district.usecase.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/district/district.usecase.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/roles/roles.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/roles/roles.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/user/user.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/user/user.controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/user/user.routes.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/user/user.routes.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/user/user.schema.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/user/user.schema.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/user/user.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/user/user.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/user/user.usecase.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/user/user.usecase.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3E1ydi51Xv0Ce70viZAa6XvBLpG" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "database.data.extractors.current.export.id": "Comma-separated (CSV)_id",
+    "git-widget-placeholder": "dev-sk",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "D:/Node/tnphc__inspection_express_app"
+  },
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
+    ]
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="26fedbc6-dad5-42a5-a3a0-cc7fac288107" name="Changes" comment="" />
+      <created>1779360462756</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1779360462756</updated>
+    </task>
+    <servers />
+  </component>
+</project>

@@ -1,3 +1,4 @@
+// user.usecase.ts
 import {
   getAllUsersService,
   getUserByIdService,
@@ -6,14 +7,13 @@ import {
   deleteUserService,
   loginService,
   getDepartmentsService,
-  getDistrictsService,
+  getMasterDistrictsService,
   getRolesService,
-  getSpecialUnitsService,  // ← ADD
+  getSpecialUnitsService,
 } from "./user.service";
 
-export const getAllUsersUsecase = async (filters?: any) => {
-  return await getAllUsersService(filters);
-};
+export const getAllUsersUsecase = async (filters?: any) =>
+  getAllUsersService(filters);
 
 export const getUserByIdUsecase = async (id: string) => {
   const user = await getUserByIdService(id);
@@ -21,23 +21,26 @@ export const getUserByIdUsecase = async (id: string) => {
   return user;
 };
 
-export const createUserUsecase = async (data: any) => {
-  return await createUserService(data);
-};
+export const createUserUsecase = async (data: any) =>
+  createUserService(data);
 
-export const updateUserUsecase = async (id: string, data: any) => {
-  return await updateUserService(id, data);
-};
+export const updateUserUsecase = async (id: string, data: any) =>
+  updateUserService(id, data);
 
-export const deleteUserUsecase = async (id: string, updatedById?: string) => {
-  return await deleteUserService(id, updatedById);
-};
+export const deleteUserUsecase = async (id: string, updatedById?: string) =>
+  deleteUserService(id, updatedById);
 
-export const loginUsecase = async (data: any) => {
-  return loginService(data);
-};
+export const loginUsecase = async (data: any) =>
+  loginService(data);
 
-export const getDepartmentsUsecase = async () => getDepartmentsService();
-export const getDistrictsUsecase = async () => getDistrictsService();
-export const getRolesUsecase = async () => getRolesService();
-export const getSpecialUnitsUsecase = async () => getSpecialUnitsService();  // ← ADD
+export const getDepartmentsUsecase = async () =>
+  getDepartmentsService();
+
+export const getMasterDistrictsUsecase = async (type?: "DISTRICT" | "CITY") =>
+  getMasterDistrictsService(type);
+
+export const getRolesUsecase = async () =>
+  getRolesService();
+
+export const getSpecialUnitsUsecase = async () =>
+  getSpecialUnitsService();

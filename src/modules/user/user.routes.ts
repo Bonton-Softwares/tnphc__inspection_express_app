@@ -1,3 +1,4 @@
+// user.routes.ts
 import { Router } from "express";
 import {
   getAllUsers,
@@ -6,12 +7,28 @@ import {
   updateUser,
   deleteUser,
   login,
+  getDepartments,
+  getMasterDistricts,
+  getRoles,
+  getSpecialUnits,
 } from "./user.controller";
 import { validateRequest } from "../../middleware";
-import { createUserSchema, deleteUserSchema, getAllUsersSchema, getUserByIdSchema, loginUserSchema, updateParamsSchema, updateUserSchema } from "./user.schema";
+import {
+  createUserSchema,
+  deleteUserSchema,
+  getAllUsersSchema,
+  getUserByIdSchema,
+  loginUserSchema,
+  updateParamsSchema,
+  updateUserSchema,
+} from "./user.schema";
 
 const router = Router();
 
+// ── AUTH ──────────────────────────────────────────────────────
+router.post("/login", validateRequest(loginUserSchema, "body"), login);
+
+// ── USERS ─────────────────────────────────────────────────────
 router.get(
   "/getAllUsers",
   validateRequest(getAllUsersSchema, "query"),
@@ -24,28 +41,16 @@ router.get(
   getUserById
 );
 
-
-// router.get("/test", (req, res) => {
-//   res.send("User route working ✅");
-// });
-
-router.post(
-  "/login",
-  validateRequest(loginUserSchema, "body"),
-  login
-);
 router.post(
   "/createUser",
   validateRequest(createUserSchema, "body"),
   createUser
 );
-// console.log("✅ user.routes.ts loaded");
 
-// router.post("/createUser", createUser);
 router.put(
   "/updateUser/:id",
-  validateRequest(updateUserSchema, "body"),
   validateRequest(updateParamsSchema, "params"),
+  validateRequest(updateUserSchema, "body"),
   updateUser
 );
 
@@ -54,4 +59,11 @@ router.patch(
   validateRequest(deleteUserSchema, "params"),
   deleteUser
 );
+
+// ── DROPDOWNS ─────────────────────────────────────────────────
+router.get("/dropdowns/roles", getRoles);
+router.get("/dropdowns/departments", getDepartments);
+router.get("/dropdowns/masterDistricts", getMasterDistricts); // ?type=DISTRICT|CITY
+router.get("/dropdowns/specialUnits", getSpecialUnits);
+
 export default router;

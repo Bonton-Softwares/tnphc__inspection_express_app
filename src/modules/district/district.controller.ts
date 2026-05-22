@@ -20,18 +20,28 @@ export const createDistrictController = async (req: Request, res: Response) => {
 };
 
 
-export const getAllDistrictsController = async (req: Request, res: Response) => {
+export const getAllDistrictsController = async (
+  req: Request,
+  res: Response
+) => {
   const pageNumber = req.query.pageNumber as string | undefined;
   const pageSize = req.query.pageSize as string | undefined;
   const search = req.query.search as string | undefined;
+  const type = req.query.type as string | undefined;
+  const isDropdown = req.query.isDropdown === "true";
 
   const result = await getAllDistrictsUsecase({
     pageNumber,
     pageSize,
     search,
+    type,
+    isDropdown,
   });
 
-  res.json({ success: true, ...result });
+  res.json({
+    success: true,
+    ...result,
+  });
 };
 export const getDistrictByIdController = async (req: Request, res: Response) => {
         const id = String(req.params.id); // ✅ FIX
