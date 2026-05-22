@@ -265,11 +265,13 @@ export const createUserService = async (data: CreateUserInput) => {
     }
   }
 
-  // Unique email
-  const existingEmail = await prisma.user.findUnique({
-    where: { email: data.email },
-  });
-  if (existingEmail) throw new Error("Email already in use");
+  // Unique email (only if provided)
+  if (data.email && data.email.trim() !== "") {
+    const existingEmail = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+    if (existingEmail) throw new Error("Email already in use");
+  }
 
   // Unique username
   const existingUser = await prisma.user.findFirst({

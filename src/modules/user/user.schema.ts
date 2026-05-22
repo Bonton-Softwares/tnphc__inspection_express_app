@@ -87,10 +87,8 @@ export const createUserSchema = Joi.object({
     "string.max": "Username must be at most 15 characters",
     "any.required": "Username is required",
   }),
-  email: Joi.string().email().required().messages({
+  email: Joi.string().email().optional().allow(null, "").messages({
     "string.email": "Enter a valid email address",
-    "string.empty": "Email is required",
-    "any.required": "Email is required",
   }),
   password: Joi.string().min(4).required().messages({
     "string.min": "Password must be at least 4 characters",
