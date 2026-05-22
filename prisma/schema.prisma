@@ -52,6 +52,9 @@ model user_management {
   district        masterDistrict?@relation(fields: [districtId], references: [id])
 
   specialUnitId   String?  @db.VarChar(36)
+  access_type   String   @default("SPECIFIC") @db.VarChar(50)
+
+district_type String?  @db.VarChar(50)
 
   specialUnit     specialUnits?@relation(fields: [specialUnitId], references: [id])
 
@@ -112,8 +115,7 @@ model specialUnits {
 
   projectAccessMappings project_access_mapping[]
 
-  users    user[]
-  projects project[]
+ 
 
 
   @@index([code])
@@ -282,7 +284,7 @@ exteriorsQuality exteriorsQuality?
   TakeoverBuildingInsepction TakeoverBuildingInspection[]
   TakeoverDevelopmentWork    TakeoverDevelopmentWork[]
 
-  SuperStructure         superStructure[]
+  
     SuperStructureProgress superStructureProgress[]
 
   
@@ -414,7 +416,7 @@ model stage {
   createdById String?   @map("created_by") @db.VarChar(255)
   updatedById String?   @map("updated_by") @db.VarChar(255)
   isActive    Boolean   @default(true) @map("is_active")
-  projects    project[]
+ 
 
   @@map("stages")
 }
@@ -1372,25 +1374,3 @@ model masterDropdownCategory {
   @@map("master_dropdown_categories")
 }
 
-
-enum DistrictType {
-  DISTRICT
-  CITY
-}
-
-enum BuildingType {
-  OFFICE
-  RESIDENCY
-  OTHERS
-}
-
-enum JurisdictionType {
-  DISTRICT
-  CITY
-  SPECIAL_UNIT
-}
-
-enum AccessType {
-  SPECIFIC
-  FULL_JURISDICTION
-}
