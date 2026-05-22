@@ -27,7 +27,7 @@
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </DataSourceFromHistory>
-  <DataSourceFromHistory isRemovedFromProject="false">
+  <DataSourceFromHistory isRemovedFromProject="true">
     <data-source source="LOCAL" name="TNPHC_INSPECTION_DB" uuid="16a5344c-d5ce-4a04-a20f-336e08cac5f9">
       <database-info product="PostgreSQL" version="15.17 (Debian 15.17-1.pgdg13+1)" jdbc-version="4.2" driver-name="PostgreSQL JDBC Driver" driver-version="42.7.3" dbms="POSTGRES" exact-version="15.17" exact-driver-version="42.7">
         <identifier-quote-string>&quot;</identifier-quote-string>
