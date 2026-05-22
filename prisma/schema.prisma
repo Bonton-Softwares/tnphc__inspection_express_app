@@ -35,42 +35,36 @@ model user {
   @@map("users")
 }
 
+
 model user_management {
   id              String   @id @default(uuid()) @db.VarChar(36)
 
   userId          String   @db.VarChar(36)
 
-  user            user @relation(fields: [userId], references: [id])
+  user            user@relation(fields: [userId], references: [id])
 
   departmentId    String   @db.VarChar(36)
 
-  department      department @relation(fields: [departmentId], references: [id])
+  department      department@relation(fields: [departmentId], references: [id])
 
   districtId      String?  @db.VarChar(36)
 
-  district        masterDistrict? @relation(fields: [districtId], references: [id])
+  district        masterDistrict?@relation(fields: [districtId], references: [id])
 
   specialUnitId   String?  @db.VarChar(36)
 
-  specialUnit     specialUnits? @relation(fields: [specialUnitId], references: [id])
-
-  access_type     String   @default("SPECIFIC") @db.VarChar(50)
-
-  district_type   String?  @db.VarChar(50)
+  specialUnit     specialUnits?@relation(fields: [specialUnitId], references: [id])
 
   createdAt       DateTime @default(now()) @map("created_at")
-
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   createdById     String?  @map("created_by") @db.VarChar(255)
-
   updatedById     String?  @map("updated_by") @db.VarChar(255)
 
   isActive        Boolean  @default(true) @map("is_active")
 
   @@map("user_managements")
 }
-
 model role {
   id          String   @id @default(uuid()) @db.VarChar(36)
 
@@ -118,7 +112,8 @@ model specialUnits {
 
   projectAccessMappings project_access_mapping[]
 
- 
+  users    user[]
+  projects project[]
 
 
   @@index([code])
@@ -250,13 +245,13 @@ model project {
 
   createdByUserId       String   @db.VarChar(36)
 
-  createdByUser         user @relation("ProjectCreatedBy",fields: [createdByUserId],references: [id])
+  createdByUser         user@relation("ProjectCreatedBy",fields: [createdByUserId],references: [id])
 
   projectAccessMappings project_access_mapping[]
 
-  
+  superStructures superStructure[]
 
-  projectHistories projectHistory[]
+  projectHistories      project_history[]
 
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
@@ -269,11 +264,9 @@ model project {
   @@map("projects")
 
 
-  stages stage[]
-
   status status @default(AssignedProjects) //  default here
 
-
+  
 
   landSiteInspection         LandSiteInspection[]
   preConstructionInspections PreConstructionInspection[]
@@ -296,43 +289,13 @@ exteriorsQuality exteriorsQuality?
   superStructureQuality  superStructureQuality?
 }
 
-model projectHistory {
-  id              String   @id @default(uuid()) @db.VarChar(36)
-
-  projectId       String   @db.VarChar(36)
-  project         project @relation(fields: [projectId], references: [id])
-
-  
-  action          String   @db.VarChar(255)
-
-  oldValue        Json?
-
-  newValue        Json?
-
-  remarks         String?  @db.Text
-
-  changedById     String?  @db.VarChar(36)
-
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  createdById     String?  @map("created_by") @db.VarChar(255)
-
-  updatedById     String?  @map("updated_by") @db.VarChar(255)
-
-  isActive        Boolean  @default(true) @map("is_active")
-
-  @@map("project_histories")
-}
-
 
 model project_access_mapping {
   id              String   @id @default(uuid()) @db.VarChar(36)
 
   projectId       String   @db.VarChar(36)
 
-  project         project @relation(fields: [projectId], references: [id])
+  project         project@relation(fields: [projectId], references: [id])
 
   districtId      String?  @db.VarChar(36)
 
@@ -340,7 +303,7 @@ model project_access_mapping {
 
   specialUnitId   String?  @db.VarChar(36)
 
-  specialUnit     specialUnits?@relation(fields: [specialUnitId], references: [id])
+  specialUnit     specialUnits? @relation(fields: [specialUnitId], references: [id])
 
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -351,7 +314,7 @@ model project_access_mapping {
   isActive        Boolean  @default(true) @map("is_active")
 
   @@map("project_access_mappings")
-}
+}  
 model officer {
   id          String   @id @default(uuid()) @db.VarChar(36)
   code        Int      @default(autoincrement()) @map("code")
@@ -453,7 +416,7 @@ model stage {
   isActive    Boolean   @default(true) @map("is_active")
   projects    project[]
 
-   @@map("stages")
+  @@map("stages")
 }
 
 model material {
@@ -1183,6 +1146,41 @@ model TakeoverDevelopmentWork {
 
   project project @relation(fields: [projectId], references: [id])
 }
+model project_history {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+
+  projectId       String   @db.VarChar(36)
+
+  project         project@relation(fields: [projectId], references: [id])
+
+  action          String   @db.VarChar(255)
+
+  oldValue        Json?
+
+  newValue        Json?
+
+  remarks         String?  @db.Text
+
+  changedById     String?  @db.VarChar(36)
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdById     String?  @map("created_by") @db.VarChar(255)
+  updatedById     String?  @map("updated_by") @db.VarChar(255)
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  @@map("project_histories")
+}
+
+// ======================================================
+// SUPER STRUCTURE TABLE
+// ======================================================
+
+// ======================================================
+// SUPER STRUCTURE TABLE
+// ======================================================
 
 
 
@@ -1197,55 +1195,25 @@ model superStructure {
 
   stageId   String? @db.VarChar(36)
 
-  // ==================================================
-  // SUPER STRUCTURE DETAILS
-  // ==================================================
-
-  // Example:
-  // Block A
-  // Block B
-  // Non Super Structure
+ 
 
   blockName String @db.VarChar(255)
 
-  // Example:
-  // 5 Floors
-  // 10 Floors
+  
 
   totalFloors Int?
 
-  // ==================================================
-  // FLOOR JSON STRUCTURE
-  // ==================================================
-
-  // Example:
-  // [
-  //   {
-  //     "floorName": "Ground Floor",
-  //     "floorNumber": 0
-  //   },
-  //   {
-  //     "floorName": "First Floor",
-  //     "floorNumber": 1
-  //   }
-  // ]
+ 
 
   floors Json?
 
-  // ==================================================
-  // NON SUPER STRUCTURE SUPPORT
-  // ==================================================
 
-  // TRUE  -> Block/Floor Available
-  // FALSE -> Non Super Structure Survey
 
   isSuperStructure Boolean @default(false)
 
   description String? @db.Text
 
-  // ==================================================
-  // COMMON FIELDS
-  // ==================================================
+ 
 
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -1257,9 +1225,7 @@ model superStructure {
 
   isActive    Boolean  @default(true) @map("is_active")
 
-  // ==================================================
-  // UNIQUE
-  // ==================================================
+  
 
   @@unique([projectId, blockName])
 
@@ -1404,4 +1370,27 @@ model masterDropdownCategory {
   @@index([typeId])
 
   @@map("master_dropdown_categories")
+}
+
+
+enum DistrictType {
+  DISTRICT
+  CITY
+}
+
+enum BuildingType {
+  OFFICE
+  RESIDENCY
+  OTHERS
+}
+
+enum JurisdictionType {
+  DISTRICT
+  CITY
+  SPECIAL_UNIT
+}
+
+enum AccessType {
+  SPECIFIC
+  FULL_JURISDICTION
 }
