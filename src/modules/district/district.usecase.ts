@@ -14,12 +14,22 @@ export const getAllDistrictsUsecase = async ({
   pageNumber,
   pageSize,
   search,
+  type,
+  isDropdown,
 }: {
   pageNumber?: string;
   pageSize?: string;
   search?: string;
+  type?: string;
+  isDropdown?: boolean;
 }) => {
-  return getAllDistrictsService({ pageNumber, pageSize, search });
+  return getAllDistrictsService({
+    pageNumber,
+    pageSize,
+    search,
+    type,
+    isDropdown,
+  });
 };
 
 

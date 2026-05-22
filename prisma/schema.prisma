@@ -8,50 +8,85 @@ datasource db {
 }
 
 model user {
-  id             String   @id @unique @default(uuid()) @db.VarChar(36)
-  email          String   @unique @map("email") @db.VarChar(255)
-  code           Int      @default(autoincrement()) @map("code")
-  createdAt      DateTime @default(now()) @map("created_at")
-  createdById    String?  @map("created_by") @db.VarChar(255)
-  isActive       Boolean  @default(true) @map("is_active")
-  passwordHashed String   @map("password_hashed") @db.VarChar(255)
-  passwordTemp   String   @map("password_temp") @db.VarChar(255)
-  roleId         String?  @map("role_id") @db.VarChar(36)
-  departmentId   String?  @map("department_id") @db.VarChar(36) 
-  specialUnitId  String?  @map("special_unit_id") @db.VarChar(36) 
-  districtId     String?  @map("district_id") @db.VarChar(36)
-  officerId      String?  @map("officer_id") @db.VarChar(36)
-  updatedAt      DateTime @updatedAt @map("updated_at")
-  updatedById    String?  @map("updated_by") @db.VarChar(255)
-  userName       String   @unique @map("user_name") @db.VarChar(15)
+  id            String   @id @default(uuid()) @db.VarChar(36)
 
-  role       Roles?      @relation(fields: [roleId], references: [id])
-  department department? @relation(fields: [departmentId], references: [id]) // ← ADD
-  district   District?   @relation(fields: [districtId], references: [id])
-  officer    officer?    @relation(fields: [officerId], references: [id])
-    specialUnit    specialUnits? @relation(fields: [specialUnitId], references: [id])  // ← ADD
-    assignedProjects project[]
- 
-   
-  @@index([specialUnitId, districtId, userName])
+  username      String   @db.VarChar(255)
 
-  @@index([code])
-  @@index([departmentId, districtId, userName])
+  email         String   @unique @db.VarChar(255)
+
+  passwordHash  String   @map("password_hash")
+
+  roleId        String   @db.VarChar(36)
+
+  role          role     @relation(fields: [roleId], references: [id])
+
+  userManagements user_management[]
+
+  createdProjects project[] @relation("ProjectCreatedBy")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  createdById   String?  @map("created_by") @db.VarChar(255)
+  updatedById   String?  @map("updated_by") @db.VarChar(255)
+
+  isActive      Boolean  @default(true) @map("is_active")
+
+  @@map("users")
 }
 
-model Roles {
+model user_management {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+
+  userId          String   @db.VarChar(36)
+
+  user            user @relation(fields: [userId], references: [id])
+
+  departmentId    String   @db.VarChar(36)
+
+  department      department @relation(fields: [departmentId], references: [id])
+
+  districtId      String?  @db.VarChar(36)
+
+  district        masterDistrict? @relation(fields: [districtId], references: [id])
+
+  specialUnitId   String?  @db.VarChar(36)
+
+  specialUnit     specialUnits? @relation(fields: [specialUnitId], references: [id])
+
+  access_type     String   @default("SPECIFIC") @db.VarChar(50)
+
+  district_type   String?  @db.VarChar(50)
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdById     String?  @map("created_by") @db.VarChar(255)
+
+  updatedById     String?  @map("updated_by") @db.VarChar(255)
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  @@map("user_managements")
+}
+
+model role {
   id          String   @id @default(uuid()) @db.VarChar(36)
-  code        Int      @default(autoincrement()) @map("code")
-  name        String   @map("name") @db.VarChar(255)
-  description String   @map("description") @db.VarChar(255)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdById String?  @map("created_by") @db.VarChar(255)
-  updatedById String?  @map("updated_by") @db.VarChar(255)
-  isActive    Boolean  @default(true) @map("is_active")
+
+  name        String   @unique @db.VarChar(255)
+
   users       user[]
 
-  @@index([code])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdById String?  @map("created_by") @db.VarChar(255)
+  updatedById String?  @map("updated_by") @db.VarChar(255)
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  @@map("roles")
 }
 
 model District {
@@ -63,8 +98,7 @@ model District {
   createdById String?   @map("created_by") @db.VarChar(255)
   updatedById String?   @map("updated_by") @db.VarChar(255)
   isActive    Boolean   @default(true) @map("is_active")
-  projects    project[]
-  users       user[]
+  
 
   @@index([code])
   @@map("districts")
@@ -80,8 +114,11 @@ model specialUnits {
   updatedById String?  @map("updated_by") @db.VarChar(255)
   isActive    Boolean  @default(true) @map("is_active")
 
-  users    user[]
-  projects project[]
+    userManagements user_management[]
+
+  projectAccessMappings project_access_mapping[]
+
+ 
 
 
   @@index([code])
@@ -166,42 +203,77 @@ model LandSiteInspection {
   project project @relation(fields: [projectId], references: [id])
 }
 
+enum DistrictType {
+  DISTRICT
+  CITY
+}
+
+enum BuildingType {
+  OFFICE
+  RESIDENCY
+  OTHERS
+}
+
+enum JurisdictionType {
+  DISTRICT
+  CITY
+  SPECIAL_UNIT
+}
+
+enum AccessType {
+  SPECIFIC
+  FULL_JURISDICTION
+}
+
 model project {
-  id   String @id @default(uuid()) @db.VarChar(36)
-  code Int    @default(autoincrement()) @map("code")
+  id                    String   @id @default(uuid()) @db.VarChar(36)
 
-  // Common
-  districtId String
-  district   District @relation(fields: [districtId], references: [id])
+  code                  Int      @unique @default(autoincrement())
 
-  // Either Department OR Special Unit
-  department    department? @relation(fields: [departmentId], references: [id])
-  departmentId  String? // FK
-  specialUnitId String? // FK
+  projectName           String   @db.VarChar(255)
 
-  specialUnit specialUnits? @relation(fields: [specialUnitId], references: [id])
+  buildingType          BuildingType
 
-  // Common
-  officer      officer? @relation(fields: [officerId], references: [id])
-  officerId    String? // FK
-  locationName String
-  projectName  String
-    // ✅ NEW: store selected stage ids
-  selectedStageIds Json? @map("selected_stage_ids")
+  departmentId          String   @db.VarChar(36)
 
-  // ✅ NEW: assign user
-  assignedUserId String? @db.VarChar(36)
-  assignedUser   user?   @relation(fields: [assignedUserId], references: [id])
+  department            department@relation(fields: [departmentId], references: [id])
+
+  jurisdictionType      JurisdictionType
+
+  accessType            AccessType
+
+  location              String?  @db.Text
+
+  hasSuperStructure     Boolean  @default(false)
+
+  selectedStages        Json?
+
+  createdByUserId       String   @db.VarChar(36)
+
+  createdByUser         user @relation("ProjectCreatedBy",fields: [createdByUserId],references: [id])
+
+  projectAccessMappings project_access_mapping[]
+
+  
+
+  projectHistories projectHistory[]
+
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  createdById           String?  @map("created_by") @db.VarChar(255)
+  updatedById           String?  @map("updated_by") @db.VarChar(255)
+
+  isActive              Boolean  @default(true) @map("is_active")
+
+  @@map("projects")
+
 
   stages stage[]
 
   status status @default(AssignedProjects) //  default here
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdById String?  @map("created_by") @db.VarChar(255)
-  updatedById String?  @map("updated_by") @db.VarChar(255)
-  isActive    Boolean  @default(true) @map("is_active")
+
 
   landSiteInspection         LandSiteInspection[]
   preConstructionInspections PreConstructionInspection[]
@@ -224,6 +296,62 @@ exteriorsQuality exteriorsQuality?
   superStructureQuality  superStructureQuality?
 }
 
+model projectHistory {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+
+  projectId       String   @db.VarChar(36)
+  project         project @relation(fields: [projectId], references: [id])
+
+  
+  action          String   @db.VarChar(255)
+
+  oldValue        Json?
+
+  newValue        Json?
+
+  remarks         String?  @db.Text
+
+  changedById     String?  @db.VarChar(36)
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdById     String?  @map("created_by") @db.VarChar(255)
+
+  updatedById     String?  @map("updated_by") @db.VarChar(255)
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  @@map("project_histories")
+}
+
+
+model project_access_mapping {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+
+  projectId       String   @db.VarChar(36)
+
+  project         project @relation(fields: [projectId], references: [id])
+
+  districtId      String?  @db.VarChar(36)
+
+  district        masterDistrict?@relation(fields: [districtId], references: [id])
+
+  specialUnitId   String?  @db.VarChar(36)
+
+  specialUnit     specialUnits?@relation(fields: [specialUnitId], references: [id])
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  createdById     String?  @map("created_by") @db.VarChar(255)
+  updatedById     String?  @map("updated_by") @db.VarChar(255)
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  @@map("project_access_mappings")
+}
 model officer {
   id          String   @id @default(uuid()) @db.VarChar(36)
   code        Int      @default(autoincrement()) @map("code")
@@ -234,23 +362,57 @@ model officer {
   updatedById String?  @map("updated_by") @db.VarChar(255)
   isActive    Boolean  @default(true) @map("is_active")
 
-  users    user[]
-  projects project[]
+  
 }
 
 model department {
-  id          String    @id @default(uuid()) @db.VarChar(36)
-  code        Int       @default(autoincrement()) @map("code")
-  name        String    @map("name") @db.VarChar(255)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  createdById String?   @map("created_by") @db.VarChar(255)
-  updatedById String?   @map("updated_by") @db.VarChar(255)
-  isActive    Boolean   @default(true) @map("is_active")
-  projects    project[]
-  users       user[]
+  id          String   @id @default(uuid()) @db.VarChar(36)
 
-  @@map("department")
+  code        Int      @unique @default(autoincrement())
+
+  name        String   @unique @db.VarChar(255)
+
+  projects    project[]
+
+  userManagements user_management[]
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdById String?  @map("created_by") @db.VarChar(255)
+  updatedById String?  @map("updated_by") @db.VarChar(255)
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  @@map("departments")
+}
+
+model masterDistrict {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+
+  code        Int      @unique @default(autoincrement())
+
+  name        String   @db.VarChar(255)
+
+  type        DistrictType
+
+  userManagements user_management[]
+
+  projectAccessMappings project_access_mapping[]
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdById String?  @map("created_by") @db.VarChar(255)
+  updatedById String?  @map("updated_by") @db.VarChar(255)
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  @@unique([name, type])
+
+  @@index([type])
+
+  @@map("master_districts")
 }
 
 model AuditLog {
@@ -290,6 +452,8 @@ model stage {
   updatedById String?   @map("updated_by") @db.VarChar(255)
   isActive    Boolean   @default(true) @map("is_active")
   projects    project[]
+
+   @@map("stages")
 }
 
 model material {
@@ -1020,23 +1184,86 @@ model TakeoverDevelopmentWork {
   project project @relation(fields: [projectId], references: [id])
 }
 
-model superStructure {
-  id        String @id @default(uuid())
-  projectId String
 
-  blockName   String 
-  totalFloors Int 
-  floors Json?  
+
+
+
+model superStructure {
+  id        String @id @default(uuid()) @db.VarChar(36)
+
+  projectId String @db.VarChar(36)
+
+  project   project@relation(fields: [projectId], references: [id])
+
+  stageId   String? @db.VarChar(36)
+
+  // ==================================================
+  // SUPER STRUCTURE DETAILS
+  // ==================================================
+
+  // Example:
+  // Block A
+  // Block B
+  // Non Super Structure
+
+  blockName String @db.VarChar(255)
+
+  // Example:
+  // 5 Floors
+  // 10 Floors
+
+  totalFloors Int?
+
+  // ==================================================
+  // FLOOR JSON STRUCTURE
+  // ==================================================
+
+  // Example:
+  // [
+  //   {
+  //     "floorName": "Ground Floor",
+  //     "floorNumber": 0
+  //   },
+  //   {
+  //     "floorName": "First Floor",
+  //     "floorNumber": 1
+  //   }
+  // ]
+
+  floors Json?
+
+  // ==================================================
+  // NON SUPER STRUCTURE SUPPORT
+  // ==================================================
+
+  // TRUE  -> Block/Floor Available
+  // FALSE -> Non Super Structure Survey
+
+  isSuperStructure Boolean @default(false)
+
+  description String? @db.Text
+
+  // ==================================================
+  // COMMON FIELDS
+  // ==================================================
 
   createdAt   DateTime @default(now()) @map("created_at")
+
   updatedAt   DateTime @updatedAt @map("updated_at")
+
   createdById String?  @map("created_by")
+
   updatedById String?  @map("updated_by")
+
   isActive    Boolean  @default(true) @map("is_active")
 
-  project project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // ==================================================
+  // UNIQUE
+  // ==================================================
 
   @@unique([projectId, blockName])
+
+  @@map("super_structures")
 }
 
 model superStructureProgress {

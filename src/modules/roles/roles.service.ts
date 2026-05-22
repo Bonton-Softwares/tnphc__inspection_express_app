@@ -7,7 +7,7 @@ export const createRoleService = async (data: {
   name: string;
   description: string;
 }) => {
-  return prisma.roles.create({
+  return prisma.role.create({
     data,
   });
 };
@@ -22,7 +22,7 @@ export const getAllRolesService = async (
 ) => {
   const skip = (pageNumber - 1) * pageSize;
 
-  return prisma.roles.findMany({
+  return prisma.role.findMany({
     where: {
       isActive: true,
       ...(search && {
@@ -42,7 +42,7 @@ export const getAllRolesService = async (
  * Get Role By ID
  */
 export const getRoleByIdService = async (id: string) => {
-  return prisma.roles.findUnique({
+  return prisma.role.findUnique({
     where: { id },
   });
 };
@@ -54,7 +54,7 @@ export const updateRoleService = async (
   id: string,
   data: { name?: string; description?: string }
 ) => {
-  return prisma.roles.update({
+  return prisma.role.update({
     where: { id },
     data,
   });
@@ -64,7 +64,7 @@ export const updateRoleService = async (
  * Delete Role (Soft delete)
  */
 export const deleteRoleService = async (id: string) => {
-  return prisma.roles.update({
+  return prisma.role.update({
     where: { id },
     data: {
       isActive: false,
