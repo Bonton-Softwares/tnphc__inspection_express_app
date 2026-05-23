@@ -5,115 +5,100 @@ import {
   updateProjectService,
   deleteProjectService,
   getProjectDashboardService,
-  getProjectsByUserService
+  getProjectsByUserService,
 } from "./project.service";
 
+// ─────────────────────────────────────────────────────────────
+// CREATE
+// ─────────────────────────────────────────────────────────────
 
-// ✅ CREATE
-export const createProjectUsecase = async (
-  data: any
-) => {
-  return await createProjectService(data);
+export const createProjectUsecase = async (data: any) => {
+  return createProjectService(data);
 };
 
+// ─────────────────────────────────────────────────────────────
+// GET ALL
+// ─────────────────────────────────────────────────────────────
 
-// ✅ GET ALL PROJECTS
 export const getAllProjectsUsecase = async ({
   pageNumber,
   pageSize,
   search,
   status,
-  districtId,
   departmentId,
+  districtId,
   specialUnitId,
-  userId
+  userId,
 }: {
   pageNumber?: string;
   pageSize?: string;
   search?: string;
   status?: string;
-  districtId?: string;
   departmentId?: string;
+  districtId?: string;
   specialUnitId?: string;
   userId?: string;
 }) => {
-
   return getAllProjectsService({
     pageNumber,
     pageSize,
     search,
     status,
-    districtId,
     departmentId,
+    districtId,
     specialUnitId,
-    userId
+    userId,
   });
-
 };
 
+// ─────────────────────────────────────────────────────────────
+// GET BY ID
+// ─────────────────────────────────────────────────────────────
 
-// ✅ GET PROJECT BY ID
-export const getProjectByIdUsecase = async (
-  id: string
-) => {
-
+export const getProjectByIdUsecase = async (id: string) => {
   const project = await getProjectByIdService(id);
-
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
+  if (!project) throw new Error("Project not found");
   return project;
 };
 
+// ─────────────────────────────────────────────────────────────
+// GET PROJECTS ASSIGNED TO A USER
+// ─────────────────────────────────────────────────────────────
 
-// ✅ GET USER PROJECTS
 export const getProjectsByUserUsecase = async ({
   userId,
   pageNumber,
   pageSize,
-  search
+  search,
 }: {
   userId?: string;
   pageNumber?: string;
   pageSize?: string;
   search?: string;
 }) => {
-
-  return await getProjectsByUserService({
-    userId,
-    pageNumber,
-    pageSize,
-    search
-  });
-
+  return getProjectsByUserService({ userId, pageNumber, pageSize, search });
 };
 
+// ─────────────────────────────────────────────────────────────
+// UPDATE
+// ─────────────────────────────────────────────────────────────
 
-// ✅ UPDATE
-export const updateProjectUsecase = async (
-  id: string,
-  data: any
-) => {
-
-  return await updateProjectService(id, data);
-
+export const updateProjectUsecase = async (id: string, data: any) => {
+  return updateProjectService(id, data);
 };
 
+// ─────────────────────────────────────────────────────────────
+// DELETE
+// ─────────────────────────────────────────────────────────────
 
-// ✅ DELETE
-export const deleteProjectUsecase = async (
-  id: string
-) => {
-
-  return await deleteProjectService(id);
-
+export const deleteProjectUsecase = async (id: string) => {
+  return deleteProjectService(id);
 };
 
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
 
-// ✅ DASHBOARD
-export const getProjectDashboardUsecase = async (
-  userId?: string
-) => {
+export const getProjectDashboardUsecase = async (userId?: string) => {
   return getProjectDashboardService(userId);
 };
