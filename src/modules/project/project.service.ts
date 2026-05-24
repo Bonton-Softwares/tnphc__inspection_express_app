@@ -161,7 +161,9 @@ export const createProjectService = async (data: CreateProjectInput) => {
     }
 
     // ── 2b. ✅ Validate district IDs exist in master_districts ─
-    await validateDistrictIds(tx, data.districtAccess);
+   if (data.districtAccess) {
+  await validateDistrictIds(tx, data.districtAccess);
+}
     if (data.specialUnitAccess) {
       await validateDistrictIds(tx, data.specialUnitAccess);
     }
@@ -517,9 +519,9 @@ export const updateProjectService = async (
     // ─────────────────────────────────────────────
     // 4. Validate district access
     // ─────────────────────────────────────────────
-    if (data.districtAccess) {
-      await validateDistrictIds(tx, data.districtAccess);
-    }
+   if (data.specialUnitAccess) {
+  await validateDistrictIds(tx, data.specialUnitAccess);
+}
 
     if (data.specialUnitAccess) {
       await validateDistrictIds(tx, data.specialUnitAccess);

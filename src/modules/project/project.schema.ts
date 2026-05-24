@@ -94,13 +94,13 @@ export const createProjectSchema = Joi.object({
 
   // ── Step 3: Jurisdiction (district/city access rule) ────────
   // Required for all departments (police or otherwise)
-  districtAccess: accessRuleSchema.required().messages({
+ districtAccess: Joi.when("specialUnitId", {
+  is: Joi.string().uuid().exist(),
+  then: accessRuleSchema.optional().allow(null),
+  otherwise: accessRuleSchema.required().messages({
     "any.required": "districtAccess is required",
   }),
-
-  // ── Step 4: Special unit (Police only, optional) ────────────
-  // If provided, specialUnitAccess must also be provided
-  specialUnitId: Joi.string().uuid().optional().allow(null, ""),
+}),
 
  specialUnitAccess: Joi.when("specialUnitId", {
   is: Joi.string().uuid().exist(),
@@ -165,7 +165,11 @@ export const updateProjectSchema = Joi.object({
 
   departmentId: Joi.string().uuid().optional(),
 
-  districtAccess: accessRuleSchema.optional(),
+  districtAccess: Joi.when("specialUnitId", {
+  is: Joi.string().uuid().exist(),
+  then: accessRuleSchema.optional().allow(null),
+  otherwise: accessRuleSchema.optional(),
+}),
 
   specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
