@@ -1,169 +1,131 @@
 import { Request, Response } from "express";
-
 import {
   getExteriorsFullViewUsecase,
   createExteriorsProgressUsecase,
+  updateExteriorsProgressUsecase,
   createExteriorsQualityUsecase,
+  updateExteriorsQualityUsecase,
+  deleteExteriorsProgressUsecase,
   getExteriorsProgressByProjectUsecase,
-  getExteriorsQualityByProjectUsecase,
-  deleteExteriorsProgressUsecase
+  getExteriorsQualityByProjectUsecase
 } from "./Exteriorsstage.usecase";
 
-const getSingleValue = (val: any): string => {
-  return Array.isArray(val) ? val[0] : val;
+const getSingleValue = (val: any): string =>
+  Array.isArray(val) ? val[0] : val;
+
+// ─── GET FULL VIEW ─────────────────────────────────────────────────
+export const getExteriorsFullViewController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const projectId = getSingleValue(req.params.projectId);
+    const data = await getExteriorsFullViewUsecase(projectId);
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 };
 
-// 🔹 FULL VIEW
-export const getExteriorsFullViewController =
-  async (req: Request, res: Response) => {
-    try {
+// ─── CREATE PROGRESS ───────────────────────────────────────────────
+export const createExteriorsProgressController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const data = await createExteriorsProgressUsecase(
+      req.body, req.files, req
+    );
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
 
-      const projectId =
-        getSingleValue(req.params.projectId);
+// ─── UPDATE PROGRESS ───────────────────────────────────────────────
+export const updateExteriorsProgressController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = getSingleValue(req.params.id);
+    const data = await updateExteriorsProgressUsecase(
+      id, req.body, req.files, req
+    );
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
 
-      const data =
-        await getExteriorsFullViewUsecase(projectId);
+// ─── CREATE QUALITY ────────────────────────────────────────────────
+export const createExteriorsQualityController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const data = await createExteriorsQualityUsecase(
+      req.body, req.files, req
+    );
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
 
-      res.status(200).json({
-        success: true,
-        data
-      });
+// ─── UPDATE QUALITY ────────────────────────────────────────────────
+export const updateExteriorsQualityController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const data = await updateExteriorsQualityUsecase(
+      req.body, req.files, req
+    );
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
 
-    } catch (e: any) {
+// ─── DELETE ────────────────────────────────────────────────────────
+export const deleteExteriorsProgressController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = getSingleValue(req.params.id);
+    await deleteExteriorsProgressUsecase(id, req);
+    res.status(200).json({ success: true, message: "Deleted successfully" });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
 
-      res.status(500).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
+// ─── GET PROGRESS ──────────────────────────────────────────────────
+export const getExteriorsProgressByProjectController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const projectId = getSingleValue(req.params.projectId);
+    const data = await getExteriorsProgressByProjectUsecase(projectId);
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
 
-// 🔹 PROGRESS
-export const createExteriorsProgressController =
-  async (req: Request, res: Response) => {
-    try {
-
-      const data =
-        await createExteriorsProgressUsecase(
-          req.body,
-          req.files,
-          req
-        );
-
-      res.status(200).json({
-        success: true,
-        data
-      });
-
-    } catch (e: any) {
-
-      res.status(400).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
-
-// 🔹 QUALITY
-export const createExteriorsQualityController =
-  async (req: Request, res: Response) => {
-    try {
-
-      const data =
-        await createExteriorsQualityUsecase(
-          req.body,
-          req.files,
-          req
-        );
-
-      res.status(200).json({
-        success: true,
-        data
-      });
-
-    } catch (e: any) {
-
-      res.status(400).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
-
-// 🔹 GET PROGRESS
-export const getExteriorsProgressByProjectController =
-  async (req: Request, res: Response) => {
-    try {
-
-      const projectId =
-        getSingleValue(req.params.projectId);
-
-      const data =
-        await getExteriorsProgressByProjectUsecase(
-          projectId
-        );
-
-      res.status(200).json({
-        success: true,
-        data
-      });
-
-    } catch (e: any) {
-
-      res.status(400).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
-
-// 🔹 GET QUALITY
-export const getExteriorsQualityByProjectController =
-  async (req: Request, res: Response) => {
-    try {
-
-      const projectId =
-        getSingleValue(req.params.projectId);
-
-      const data =
-        await getExteriorsQualityByProjectUsecase(
-          projectId
-        );
-
-      res.status(200).json({
-        success: true,
-        data
-      });
-
-    } catch (e: any) {
-
-      res.status(400).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
-
-// 🔹 DELETE
-export const deleteExteriorsProgressController =
-  async (req: Request, res: Response) => {
-    try {
-
-      const id =
-        getSingleValue(req.params.id);
-
-      await deleteExteriorsProgressUsecase(id);
-
-      res.status(200).json({
-        success: true,
-        message: "Deleted successfully"
-      });
-
-    } catch (e: any) {
-
-      res.status(500).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };
+// ─── GET QUALITY ───────────────────────────────────────────────────
+export const getExteriorsQualityByProjectController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const projectId = getSingleValue(req.params.projectId);
+    const data = await getExteriorsQualityByProjectUsecase(projectId);
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
