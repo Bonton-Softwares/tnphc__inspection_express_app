@@ -102,14 +102,14 @@ export const createProjectSchema = Joi.object({
   // If provided, specialUnitAccess must also be provided
   specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
-  specialUnitAccess: Joi.when("specialUnitId", {
-    is: Joi.string().uuid().exist(),
-    then: accessRuleSchema.required().messages({
-      "any.required":
-        "specialUnitAccess is required when specialUnitId is provided",
-    }),
-    otherwise: accessRuleSchema.optional(),
+ specialUnitAccess: Joi.when("specialUnitId", {
+  is: Joi.string().uuid().exist(),
+  then: accessRuleSchema.required().messages({
+    "any.required":
+      "specialUnitAccess is required when specialUnitId is provided",
   }),
+  otherwise: accessRuleSchema.optional().allow(null),
+}),
 
   // ── Step 5: Stages ──────────────────────────────────────────
   stageIds: Joi.array()
@@ -170,10 +170,13 @@ export const updateProjectSchema = Joi.object({
   specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
   specialUnitAccess: Joi.when("specialUnitId", {
-    is: Joi.string().uuid().exist(),
-    then: accessRuleSchema.required(),
-    otherwise: accessRuleSchema.optional(),
+  is: Joi.string().uuid().exist(),
+  then: accessRuleSchema.required().messages({
+    "any.required":
+      "specialUnitAccess is required when specialUnitId is provided",
   }),
+  otherwise: accessRuleSchema.optional().allow(null),
+}),
 
   stageIds: Joi.array().items(Joi.string().uuid().required()).optional(),
 
