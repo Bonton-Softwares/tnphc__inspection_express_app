@@ -1,6 +1,17 @@
-// src/shared/prisma.ts
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+declare global {
+  var __prisma: PrismaClient | undefined;
+}
+
+const prisma =
+  globalThis.__prisma ??
+  new PrismaClient({
+    log: ["error"]
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.__prisma = prisma;
+}
 
 export default prisma;

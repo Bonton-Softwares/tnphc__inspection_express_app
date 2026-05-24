@@ -1239,8 +1239,8 @@ model superStructureProgress {
   projectId String
   project project @relation(fields: [projectId], references: [id])
 
-  blockName String
-  floorName String
+  blockName String?
+  floorName String?
 
   stage String?
   photo Json?
