@@ -250,7 +250,7 @@ export const getUserByIdService = async (id: string) => {
 export const createUserService = async (data: CreateUserInput) => {
   if (!data.password) throw new Error("Password is required");
   if (!data.userName?.trim()) throw new Error("Username is required");
-  if (!data.email?.trim()) throw new Error("Email is required");
+  // if (!data.email?.trim()) throw new Error("Email is required");
   if (!data.roleId) throw new Error("Role is required");
 
   const roleName = await resolveRoleName(data.roleId, data.roleName);
@@ -266,12 +266,12 @@ export const createUserService = async (data: CreateUserInput) => {
   }
 
   // Unique email (only if provided)
-  if (data.email && data.email.trim() !== "") {
-    const existingEmail = await prisma.user.findUnique({
-      where: { email: data.email },
-    });
-    if (existingEmail) throw new Error("Email already in use");
-  }
+  // if (data.email && data.email.trim() !== "") {
+  //   const existingEmail = await prisma.user.findUnique({
+  //     where: { email: data.email },
+  //   });
+  //   if (existingEmail) throw new Error("Email already in use");
+  // }
 
   // Unique username
   const existingUser = await prisma.user.findFirst({
@@ -325,13 +325,13 @@ export const updateUserService = async (id: string, data: UpdateUserInput) => {
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing || !existing.isActive) throw new Error("User not found");
 
-  // Email uniqueness
-  if (data.email && data.email !== existing.email) {
-    const emailExists = await prisma.user.findFirst({
-      where: { email: data.email, NOT: { id } },
-    });
-    if (emailExists) throw new Error("Email already in use");
-  }
+  // // Email uniqueness
+  // if (data.email && data.email !== existing.email) {
+  //   const emailExists = await prisma.user.findFirst({
+  //     where: { email: data.email, NOT: { id } },
+  //   });
+  //   if (emailExists) throw new Error("Email already in use");
+  // }
 
   // Username uniqueness
   if (data.userName && data.userName !== existing.username) {
