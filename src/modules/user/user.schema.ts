@@ -1,15 +1,9 @@
-// user.schema.ts
 import Joi from "joi";
 
-// ── ROLES THAT NEED NO DEPARTMENT/DISTRICT ──────────────────
 export const STANDALONE_ROLES = ["admin", "cmd", "fsr"];
+export const POLICE_DEPT_KEY = "police";
 
-// ── DEPARTMENT THAT SUPPORTS SPECIAL UNITS ──────────────────
-export const POLICE_DEPT_KEY = "police"; // match by department name (lowercased)
-
-// ─────────────────────────────────────────────────────────────
-// LOGIN
-// ─────────────────────────────────────────────────────────────
+// ─── LOGIN ────────────────────────────────────────────────────
 export const loginUserSchema = Joi.object({
   userName: Joi.string().required().messages({
     "string.empty": "Username is required",
@@ -21,12 +15,10 @@ export const loginUserSchema = Joi.object({
   }),
 });
 
-// ─────────────────────────────────────────────────────────────
-// DISTRICT/CITY ASSIGNMENT (used inside managements array)
-// ─────────────────────────────────────────────────────────────
+// ─── DISTRICT ENTRY (inside SPECIFIC access) ─────────────────
 const districtAssignmentSchema = Joi.object({
   districtId: Joi.string().required().messages({
-    "any.required": "District ID is required",
+    "any.required": "districtId is required",
   }),
   districtType: Joi.string().valid("DISTRICT", "CITY").required().messages({
     "any.only": "districtType must be DISTRICT or CITY",
@@ -34,53 +26,59 @@ const districtAssignmentSchema = Joi.object({
   }),
 });
 
-// ─────────────────────────────────────────────────────────────
-// DEPARTMENT MANAGEMENT ENTRY
-// ─────────────────────────────────────────────────────────────
+// ─── MANAGEMENT ENTRY ─────────────────────────────────────────
+// Rules (mirrors project creation):
+//   specialUnitId present  → NO districts, NO accessType, NO districtType needed
+//   specialUnitId absent   → accessType required
+//                             SPECIFIC        → districts[] min 1
+//                             FULL_JURISDICTION → districts not needed
 const managementEntrySchema = Joi.object({
   departmentId: Joi.string().required().messages({
-    "any.required": "Department ID is required",
+    "any.required": "departmentId is required",
   }),
 
-  // "SPECIFIC" → user picked individual districts/cities
-  // "JURISDICTION" → user gets access to ALL districts/cities
-  accessType: Joi.string().valid("SPECIFIC", "JURISDICTION").required().messages({
-    "any.only": "accessType must be SPECIFIC or JURISDICTION",
-    "any.required": "accessType is required",
-  }),
-
-  // For SPECIFIC: list of district/city IDs
-  // For JURISDICTION: empty array or omit
-  districts: Joi.when("accessType", {
-    is: "SPECIFIC",
-    then: Joi.array()
-      .items(districtAssignmentSchema)
-      .min(1)
-      .required()
-      .messages({
-        "array.min": "Select at least one district or city",
-        "any.required": "districts are required for SPECIFIC access",
-      }),
-    otherwise: Joi.array().items(districtAssignmentSchema).optional(),
-  }),
-
-  // Only for Police department — optional special unit
+  // Only present when user picks a special unit under this department.
+  // When set → accessType / districts are NOT required.
   specialUnitId: Joi.string().optional().allow(null, ""),
 
-  // Required ONLY when specialUnitId is a non-empty string
-  specialUnitAccessType: Joi.when("specialUnitId", {
-    is: Joi.string().trim().min(1).exist(),   // true only when present AND non-empty
-    then: Joi.string().valid("SPECIFIC", "JURISDICTION").required().messages({
-      "any.only": "specialUnitAccessType must be SPECIFIC or JURISDICTION",
-      "any.required": "specialUnitAccessType is required when specialUnitId is set",
+  // Required only when specialUnitId is absent/empty
+  accessType: Joi.when("specialUnitId", {
+    is: Joi.string().trim().min(1).exist(),
+    then: Joi.string()
+      .valid("SPECIFIC", "FULL_JURISDICTION")
+      .optional()
+      .allow(null, ""),
+    otherwise: Joi.string()
+      .valid("SPECIFIC", "FULL_JURISDICTION")
+      .required()
+      .messages({
+        "any.only": "accessType must be SPECIFIC or FULL_JURISDICTION",
+        "any.required":
+          "accessType is required when no specialUnitId is provided",
+      }),
+  }),
+
+  // Required only when specialUnitId is absent AND accessType = SPECIFIC
+  districts: Joi.when("specialUnitId", {
+    is: Joi.string().trim().min(1).exist(),
+    // Special unit path → strip districts entirely
+    then: Joi.array().items(districtAssignmentSchema).optional(),
+    otherwise: Joi.when("accessType", {
+      is: "SPECIFIC",
+      then: Joi.array()
+        .items(districtAssignmentSchema)
+        .min(1)
+        .required()
+        .messages({
+          "array.min": "Select at least one district or city for SPECIFIC access",
+          "any.required": "districts are required when accessType is SPECIFIC",
+        }),
+      otherwise: Joi.array().items(districtAssignmentSchema).optional(),
     }),
-    otherwise: Joi.string().valid("SPECIFIC", "JURISDICTION").optional().allow(null, ""),
   }),
 });
 
-// ─────────────────────────────────────────────────────────────
-// CREATE USER
-// ─────────────────────────────────────────────────────────────
+// ─── CREATE USER ──────────────────────────────────────────────
 export const createUserSchema = Joi.object({
   userName: Joi.string().max(15).required().messages({
     "string.empty": "Username is required",
@@ -99,24 +97,12 @@ export const createUserSchema = Joi.object({
     "string.empty": "Role is required",
     "any.required": "Role is required",
   }),
-
-  // roleName is used server-side to decide if managements are required
-  // client must send the role name for validation logic
   roleName: Joi.string().optional().allow(null, ""),
-
-  // Managements are required ONLY for non-standalone roles
-  // The service layer enforces this based on the resolved role name
-  managements: Joi.array()
-    .items(managementEntrySchema)
-    .optional()
-    .allow(null),
-
+  managements: Joi.array().items(managementEntrySchema).optional().allow(null),
   createdById: Joi.string().optional().allow(null, ""),
 });
 
-// ─────────────────────────────────────────────────────────────
-// UPDATE USER
-// ─────────────────────────────────────────────────────────────
+// ─── UPDATE USER ──────────────────────────────────────────────
 export const updateUserSchema = Joi.object({
   userName: Joi.string().max(15).optional().messages({
     "string.max": "Username must be at most 15 characters",
@@ -133,9 +119,7 @@ export const updateUserSchema = Joi.object({
   updatedById: Joi.string().optional().allow(null, ""),
 });
 
-// ─────────────────────────────────────────────────────────────
-// PARAMS / QUERY
-// ─────────────────────────────────────────────────────────────
+// ─── PARAMS / QUERY ───────────────────────────────────────────
 export const getAllUsersSchema = Joi.object({
   pageNumber: Joi.number().integer().min(1).default(1),
   pageSize: Joi.number().integer().min(1).max(100).default(10),
@@ -146,14 +130,6 @@ export const getAllUsersSchema = Joi.object({
   districtId: Joi.string().optional(),
 });
 
-export const getUserByIdSchema = Joi.object({
-  id: Joi.string().required(),
-});
-
-export const deleteUserSchema = Joi.object({
-  id: Joi.string().required(),
-});
-
-export const updateParamsSchema = Joi.object({
-  id: Joi.string().required(),
-});
+export const getUserByIdSchema = Joi.object({ id: Joi.string().required() });
+export const deleteUserSchema = Joi.object({ id: Joi.string().required() });
+export const updateParamsSchema = Joi.object({ id: Joi.string().required() });
