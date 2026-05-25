@@ -18,9 +18,9 @@ const districtEntrySchema = Joi.object({
 });
 
 /**
- * Access rule for a district/city block OR a special-unit block.
+ * Access rule for a district/city block.
  *
- * accessType = SPECIFIC   → districts[] must have ≥ 1 entry
+ * accessType = SPECIFIC          → districts[] must have ≥ 1 entry
  * accessType = FULL_JURISDICTION → districts[] not needed
  */
 const accessRuleSchema = Joi.object({
@@ -92,24 +92,22 @@ export const createProjectSchema = Joi.object({
     "any.required": "departmentId is required",
   }),
 
-  // ── Step 3: Jurisdiction (district/city access rule) ────────
-  // Required for all departments (police or otherwise)
- districtAccess: Joi.when("specialUnitId", {
-  is: Joi.string().uuid().exist(),
-  then: accessRuleSchema.optional().allow(null),
-  otherwise: accessRuleSchema.required().messages({
-    "any.required": "districtAccess is required",
-  }),
-}),
+  // ── Step 3: Special Unit (optional) ────────────────────────
+  // When provided, the project is scoped to this special unit
+  // under the given department. districtAccess is NOT required.
+  specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
- specialUnitAccess: Joi.when("specialUnitId", {
-  is: Joi.string().uuid().exist(),
-  then: accessRuleSchema.required().messages({
-    "any.required":
-      "specialUnitAccess is required when specialUnitId is provided",
+  // ── Step 4: District access (only when NO special unit) ─────
+  // Required when specialUnitId is absent.
+  // When specialUnitId is present, this field is ignored entirely.
+  districtAccess: Joi.when("specialUnitId", {
+    is: Joi.string().uuid().exist(),
+    then: Joi.any().strip(), // strip it — not needed for special-unit projects
+    otherwise: accessRuleSchema.required().messages({
+      "any.required":
+        "districtAccess is required when no specialUnitId is provided",
+    }),
   }),
-  otherwise: accessRuleSchema.optional().allow(null),
-}),
 
   // ── Step 5: Stages ──────────────────────────────────────────
   stageIds: Joi.array()
@@ -126,7 +124,6 @@ export const createProjectSchema = Joi.object({
     "any.required": "hasSuperStructure is required",
   }),
 
-  // Required only when hasSuperStructure = true
   superStructure: Joi.when("hasSuperStructure", {
     is: true,
     then: Joi.array()
@@ -143,7 +140,6 @@ export const createProjectSchema = Joi.object({
   }),
 
   // ── Meta ────────────────────────────────────────────────────
-  // Must be a valid user UUID — maps to createdByUserId FK on the project table
   createdById: Joi.string().uuid().required().messages({
     "any.required": "createdById is required (the creating user's ID)",
     "string.guid": "createdById must be a valid UUID",
@@ -165,22 +161,15 @@ export const updateProjectSchema = Joi.object({
 
   departmentId: Joi.string().uuid().optional(),
 
-  districtAccess: Joi.when("specialUnitId", {
-  is: Joi.string().uuid().exist(),
-  then: accessRuleSchema.optional().allow(null),
-  otherwise: accessRuleSchema.optional(),
-}),
-
+  // When updating to a special-unit project: provide specialUnitId only.
+  // When updating to a district project: provide districtAccess only (and set specialUnitId to null).
   specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
-  specialUnitAccess: Joi.when("specialUnitId", {
-  is: Joi.string().uuid().exist(),
-  then: accessRuleSchema.required().messages({
-    "any.required":
-      "specialUnitAccess is required when specialUnitId is provided",
+  districtAccess: Joi.when("specialUnitId", {
+    is: Joi.string().uuid().exist(),
+    then: Joi.any().strip(), // not needed for special-unit projects
+    otherwise: accessRuleSchema.optional(),
   }),
-  otherwise: accessRuleSchema.optional().allow(null),
-}),
 
   stageIds: Joi.array().items(Joi.string().uuid().required()).optional(),
 

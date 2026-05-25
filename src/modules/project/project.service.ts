@@ -19,7 +19,7 @@ type AccessRule = {
 type SuperStructureBlock = {
   blockName: string;
   totalFloors: number;
-  floors: string[]; // floor names e.g. ["Ground", "1st", "2nd"]
+  floors: string[];
 };
 
 type CreateProjectInput = {
@@ -27,9 +27,20 @@ type CreateProjectInput = {
   buildingType: "OFFICE" | "RESIDENCY" | "OTHERS";
   location?: string;
   departmentId: string;
-  districtAccess: AccessRule;
+  /**
+   * DISTRICT/CITY project  → specialUnitId is absent/null
+   *                          districtAccess is REQUIRED
+   *                          accessType = SPECIFIC | FULL_JURISDICTION
+   *                          jurisdictionType = "DISTRICT"
+   *
+   * SPECIAL UNIT project   → specialUnitId is a valid UUID
+   *                          districtAccess is NOT sent / ignored
+   *                          accessType stored as "FULL_JURISDICTION" (no district concept)
+   *                          jurisdictionType = "SPECIAL_UNIT"
+   *                          All department users see this project; no district filtering.
+   */
   specialUnitId?: string;
-  specialUnitAccess?: AccessRule;
+  districtAccess?: AccessRule;
   stageIds: string[];
   hasSuperStructure: boolean;
   superStructure?: SuperStructureBlock[];
@@ -46,52 +57,63 @@ type UpdateProjectInput = Partial<Omit<CreateProjectInput, "createdById">> & {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Build project_access_mapping rows from an AccessRule.
- *
- * SPECIFIC          → one row per district entry
- * FULL_JURISDICTION → one row with districtId = null (means "all")
+ * District/City project access rows.
+ * SPECIFIC          → one row per district entry  (districtId set, specialUnitId null)
+ * FULL_JURISDICTION → one row with districtId = null, specialUnitId = null
  */
-function buildAccessMappingRows(
+function buildDistrictAccessRows(
   projectId: string,
   rule: AccessRule,
-  specialUnitId: string | null,
   createdById?: string
 ) {
-  const rows: any[] = [];
-
   if (rule.accessType === "FULL_JURISDICTION") {
-    rows.push({
+    return [
+      {
+        projectId,
+        districtId: null,
+        specialUnitId: null,
+        createdById: createdById ?? null,
+        isActive: true,
+      },
+    ];
+  }
+
+  // SPECIFIC
+  const districts = rule.districts ?? [];
+  if (districts.length === 0) {
+    throw new Error(
+      "At least one district or city is required for SPECIFIC access"
+    );
+  }
+  return districts.map((d) => ({
+    projectId,
+    districtId: d.districtId,
+    specialUnitId: null,
+    createdById: createdById ?? null,
+    isActive: true,
+  }));
+}
+
+/**
+ * Special-unit project: always one FULL_JURISDICTION row.
+ * districtId = null  →  no district filtering; all dept users see the project.
+ */
+function buildSpecialUnitAccessRow(
+  projectId: string,
+  specialUnitId: string,
+  createdById?: string
+) {
+  return [
+    {
       projectId,
       districtId: null,
       specialUnitId,
       createdById: createdById ?? null,
       isActive: true,
-    });
-  } else {
-    // SPECIFIC — one row per district/city
-    const districts = rule.districts ?? [];
-    if (districts.length === 0) {
-      throw new Error(
-        "At least one district or city is required for SPECIFIC access"
-      );
-    }
-    for (const d of districts) {
-      rows.push({
-        projectId,
-        districtId: d.districtId,
-        specialUnitId,
-        createdById: createdById ?? null,
-        isActive: true,
-      });
-    }
-  }
-
-  return rows;
+    },
+  ];
 }
 
-/**
- * Validate that all stageIds exist in the DB.
- */
 async function validateStages(tx: any, stageIds: string[]): Promise<void> {
   const found = await tx.stage.findMany({
     where: { id: { in: stageIds }, isActive: true },
@@ -102,9 +124,6 @@ async function validateStages(tx: any, stageIds: string[]): Promise<void> {
   }
 }
 
-/**
- * Validate super-structure blocks: totalFloors must match floors.length.
- */
 function validateSuperStructureBlocks(blocks: SuperStructureBlock[]): void {
   for (const b of blocks) {
     if (!Array.isArray(b.floors) || b.floors.length === 0) {
@@ -118,16 +137,10 @@ function validateSuperStructureBlocks(blocks: SuperStructureBlock[]): void {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// ✅ NEW: Validate that all districtIds in an AccessRule exist
-//         in master_districts before inserting access mappings.
-//         Gives a clean 400 error instead of a raw FK violation.
-// ─────────────────────────────────────────────────────────────
 async function validateDistrictIds(tx: any, rule: AccessRule): Promise<void> {
   if (rule.accessType !== "SPECIFIC" || !rule.districts?.length) return;
 
   const ids = rule.districts.map((d) => d.districtId);
-
   const found = await tx.masterDistrict.findMany({
     where: { id: { in: ids }, isActive: true },
     select: { id: true },
@@ -152,26 +165,28 @@ export const createProjectService = async (data: CreateProjectInput) => {
     });
     if (!dept) throw new Error("Invalid departmentId");
 
-    // ── 2. Validate special unit (if provided) ────────────────
-    if (data.specialUnitId) {
+    const isSpecialUnit = !!data.specialUnitId;
+
+    // ── 2a. Special unit path ─────────────────────────────────
+    if (isSpecialUnit) {
       const unit = await tx.specialUnits.findUnique({
-        where: { id: data.specialUnitId, isActive: true },
+        where: { id: data.specialUnitId!, isActive: true },
       });
       if (!unit) throw new Error("Invalid specialUnitId");
-    }
-
-    // ── 2b. ✅ Validate district IDs exist in master_districts ─
-   if (data.districtAccess) {
-  await validateDistrictIds(tx, data.districtAccess);
-}
-    if (data.specialUnitAccess) {
-      await validateDistrictIds(tx, data.specialUnitAccess);
+    } else {
+      // ── 2b. District/city path ────────────────────────────
+      if (!data.districtAccess) {
+        throw new Error(
+          "districtAccess is required when no specialUnitId is provided"
+        );
+      }
+      await validateDistrictIds(tx, data.districtAccess);
     }
 
     // ── 3. Validate stages ────────────────────────────────────
     await validateStages(tx, data.stageIds);
 
-    // ── 4. Validate createdByUserId (required FK) ─────────────
+    // ── 4. Validate createdById ───────────────────────────────
     if (!data.createdById) {
       throw new Error("createdById (the creating user's ID) is required");
     }
@@ -184,7 +199,7 @@ export const createProjectService = async (data: CreateProjectInput) => {
       );
     }
 
-    // ── 5. Validate super-structure blocks ────────────────────
+    // ── 5. Validate super-structure ───────────────────────────
     if (data.hasSuperStructure) {
       if (!data.superStructure || data.superStructure.length === 0) {
         throw new Error(
@@ -195,50 +210,42 @@ export const createProjectService = async (data: CreateProjectInput) => {
     }
 
     // ── 6. Create project ─────────────────────────────────────
+    //
+    // jurisdictionType:
+    //   SPECIAL_UNIT → specialUnitId provided
+    //   DISTRICT     → district/city access
+    //
+    // accessType (stored on project):
+    //   Special unit  → always FULL_JURISDICTION (no district concept)
+    //   District SPECIFIC          → SPECIFIC
+    //   District FULL_JURISDICTION → FULL_JURISDICTION
+    //
     const project = await tx.project.create({
       data: {
         projectName: data.projectName,
         buildingType: data.buildingType,
         location: data.location ?? null,
         departmentId: data.departmentId,
-        jurisdictionType: data.specialUnitId ? "SPECIAL_UNIT" : "DISTRICT",
-        accessType:
-          data.districtAccess.accessType === "FULL_JURISDICTION"
-            ? "FULL_JURISDICTION"
-            : "SPECIFIC",
+        jurisdictionType: isSpecialUnit ? "SPECIAL_UNIT" : "DISTRICT",
+        accessType: isSpecialUnit
+          ? "FULL_JURISDICTION"
+          : data.districtAccess!.accessType,
         hasSuperStructure: data.hasSuperStructure,
         selectedStages: data.stageIds,
         status: status.AssignedProjects,
-        createdByUserId: data.createdById, // validated above — always a real user
+        createdByUserId: data.createdById,
         createdById: data.createdById,
       },
     });
 
-    // ── 7. Build and insert access mapping rows ───────────────
-    // 7a. District/city access (for all departments)
-    const districtRows = buildAccessMappingRows(
-      project.id,
-      data.districtAccess,
-      null, // no special unit
-      data.createdById
-    );
+    // ── 7. Insert access mapping rows ─────────────────────────
+    const accessRows = isSpecialUnit
+      ? buildSpecialUnitAccessRow(project.id, data.specialUnitId!, data.createdById)
+      : buildDistrictAccessRows(project.id, data.districtAccess!, data.createdById);
 
-    // 7b. Special unit access (police only, if provided)
-    const specialUnitRows =
-      data.specialUnitId && data.specialUnitAccess
-        ? buildAccessMappingRows(
-            project.id,
-            data.specialUnitAccess,
-            data.specialUnitId,
-            data.createdById
-          )
-        : [];
+    await tx.project_access_mapping.createMany({ data: accessRows });
 
-    await tx.project_access_mapping.createMany({
-      data: [...districtRows, ...specialUnitRows],
-    });
-
-    // ── 8. Create super-structure blocks ──────────────────────
+    // ── 8. Super-structure blocks ─────────────────────────────
     if (data.hasSuperStructure && data.superStructure?.length) {
       await tx.superStructure.createMany({
         data: data.superStructure.map((b) => ({
@@ -289,14 +296,11 @@ export const getAllProjectsService = async (query: {
 
   const where: any = { isActive: true };
 
-  if (search) {
-    where.projectName = { contains: search, mode: "insensitive" };
-  }
+  if (search) where.projectName = { contains: search, mode: "insensitive" };
   if (status) where.status = status;
   if (departmentId) where.departmentId = departmentId;
   if (userId) where.createdByUserId = userId;
 
-  // Filter by district or special unit via access mappings
   if (districtId || specialUnitId) {
     where.projectAccessMappings = {
       some: {
@@ -314,14 +318,9 @@ export const getAllProjectsService = async (query: {
         department: true,
         projectAccessMappings: {
           where: { isActive: true },
-          include: {
-            district: true,
-            specialUnit: true,
-          },
+          include: { district: true, specialUnit: true },
         },
-        superStructures: {
-          where: { isActive: true },
-        },
+        superStructures: { where: { isActive: true } },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -330,29 +329,50 @@ export const getAllProjectsService = async (query: {
     prisma.project.count({ where }),
   ]);
 
-  const formattedData = data.map((p) => ({
-    id: p.id,
-    code: p.code,
-    projectName: p.projectName,
-    buildingType: p.buildingType,
-    location: p.location,
-    departmentName: p.department?.name ?? null,
-    jurisdictionType: p.jurisdictionType,
-    accessType: p.accessType,
-    hasSuperStructure: p.hasSuperStructure,
-    status: p.status,
-    totalBlocks: p.superStructures.length,
-    totalFloors: p.superStructures.reduce(
-      (sum, b) => sum + (b.totalFloors ?? 0),
-      0
-    ),
-    accessMappings: p.projectAccessMappings.map((m) => ({
-      districtName: m.district?.name ?? null,
-      districtType: m.district?.type ?? null,
-      specialUnitName: m.specialUnit?.name ?? null,
-    })),
-    createdAt: p.createdAt,
-  }));
+  const formattedData = data.map((p) => {
+    const isSpecialUnit = p.jurisdictionType === "SPECIAL_UNIT";
+    const specialUnitMapping = p.projectAccessMappings.find((m) => !!m.specialUnitId);
+    const districtMappings = p.projectAccessMappings.filter((m) => !m.specialUnitId);
+
+    return {
+      id: p.id,
+      code: p.code,
+      projectName: p.projectName,
+      buildingType: p.buildingType,
+      location: p.location,
+      departmentName: p.department?.name ?? null,
+      jurisdictionType: p.jurisdictionType,
+      accessType: isSpecialUnit ? null : p.accessType,
+      hasSuperStructure: p.hasSuperStructure,
+      status: p.status,
+      totalBlocks: p.superStructures.length,
+      totalFloors: p.superStructures.reduce((sum, b) => sum + (b.totalFloors ?? 0), 0),
+
+      // District/city access — only for DISTRICT projects
+      districtAccess: isSpecialUnit
+        ? null
+        : {
+            accessType: p.accessType,
+            districts: districtMappings
+              .filter((m) => m.districtId)
+              .map((m) => ({
+                districtId: m.districtId,
+                districtName: m.district?.name ?? null,
+                districtType: m.district?.type ?? null,
+              })),
+          },
+
+      // Special unit access — only for SPECIAL_UNIT projects
+      specialUnitAccess: isSpecialUnit && specialUnitMapping
+        ? {
+            specialUnitId: specialUnitMapping.specialUnitId ?? null,
+            specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
+          }
+        : null,
+
+      createdAt: p.createdAt,
+    };
+  });
 
   return { totalRecords, data: formattedData };
 };
@@ -368,35 +388,19 @@ export const getProjectByIdService = async (id: string) => {
       department: true,
       projectAccessMappings: {
         where: { isActive: true },
-        include: {
-          district: true,
-          specialUnit: true,
-        },
+        include: { district: true, specialUnit: true },
       },
-      superStructures: {
-        where: { isActive: true },
-      },
-      SuperStructureProgress: {
-        where: { isActive: true },
-      },
-      projectHistories: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      },
+      superStructures: { where: { isActive: true } },
+      SuperStructureProgress: { where: { isActive: true } },
+      projectHistories: { orderBy: { createdAt: "desc" }, take: 10 },
     },
   });
 
-  if (!project || !project.isActive) {
-    throw new Error("Project not found");
-  }
+  if (!project || !project.isActive) throw new Error("Project not found");
 
-  // Separate district-only rows and special-unit rows
-  const districtMappings = project.projectAccessMappings.filter(
-    (m) => !m.specialUnitId
-  );
-  const specialUnitMappings = project.projectAccessMappings.filter(
-    (m) => !!m.specialUnitId
-  );
+  const isSpecialUnit = project.jurisdictionType === "SPECIAL_UNIT";
+  const specialUnitMapping = project.projectAccessMappings.find((m) => !!m.specialUnitId);
+  const districtMappings = project.projectAccessMappings.filter((m) => !m.specialUnitId);
 
   return {
     id: project.id,
@@ -405,7 +409,7 @@ export const getProjectByIdService = async (id: string) => {
     buildingType: project.buildingType,
     location: project.location,
     jurisdictionType: project.jurisdictionType,
-    accessType: project.accessType,
+    accessType: isSpecialUnit ? null : project.accessType,
     hasSuperStructure: project.hasSuperStructure,
     selectedStages: project.selectedStages,
     status: project.status,
@@ -414,32 +418,28 @@ export const getProjectByIdService = async (id: string) => {
       ? { id: project.department.id, name: project.department.name }
       : null,
 
-    districtAccess: {
-      accessType: project.accessType,
-      districts: districtMappings
-        .filter((m) => m.districtId)
-        .map((m) => ({
-          districtId: m.districtId,
-          districtName: m.district?.name ?? null,
-          districtType: m.district?.type ?? null,
-        })),
-    },
+    // Only for DISTRICT projects — includes accessType (SPECIFIC / FULL_JURISDICTION)
+    // and the selected districts (empty array when FULL_JURISDICTION)
+    districtAccess: isSpecialUnit
+      ? null
+      : {
+          accessType: project.accessType,
+          districts: districtMappings
+            .filter((m) => m.districtId)
+            .map((m) => ({
+              districtId: m.districtId,
+              districtName: m.district?.name ?? null,
+              districtType: m.district?.type ?? null,
+            })),
+        },
 
-    specialUnitAccess:
-      specialUnitMappings.length > 0
-        ? {
-            specialUnitId: specialUnitMappings[0].specialUnitId ?? null,
-            specialUnitName: specialUnitMappings[0].specialUnit?.name ?? null,
-            accessType: project.accessType,
-            districts: specialUnitMappings
-              .filter((m) => m.districtId)
-              .map((m) => ({
-                districtId: m.districtId,
-                districtName: m.district?.name ?? null,
-                districtType: m.district?.type ?? null,
-              })),
-          }
-        : null,
+    // Only for SPECIAL_UNIT projects — no accessType, no districts
+    specialUnitAccess: isSpecialUnit && specialUnitMapping
+      ? {
+          specialUnitId: specialUnitMapping.specialUnitId ?? null,
+          specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
+        }
+      : null,
 
     blocks: project.superStructures.map((b) => {
       const progress = project.SuperStructureProgress.filter(
@@ -449,8 +449,7 @@ export const getProjectByIdService = async (id: string) => {
         blockName: b.blockName,
         totalFloors: b.totalFloors,
         floors: b.floors ?? [],
-        completedFloors: progress.filter((sp) => sp.status === "COMPLETED")
-          .length,
+        completedFloors: progress.filter((sp) => sp.status === "COMPLETED").length,
         floorProgress: progress.map((sp) => ({
           floorName: sp.floorName,
           status: sp.status,
@@ -473,192 +472,109 @@ export const updateProjectService = async (
   data: UpdateProjectInput
 ) => {
   return prisma.$transaction(async (tx) => {
-    // ─────────────────────────────────────────────
-    // 1. Validate project
-    // ─────────────────────────────────────────────
-    const existing = await tx.project.findUnique({
-      where: { id },
-    });
-
+    // ── 1. Validate project exists ────────────────────────────
+    const existing = await tx.project.findUnique({ where: { id } });
     if (!existing || !existing.isActive) {
       throw new Error(`Project with id "${id}" not found`);
     }
 
-    // ─────────────────────────────────────────────
-    // 2. Validate department
-    // ─────────────────────────────────────────────
+    // ── 2. Validate department ────────────────────────────────
     if (data.departmentId) {
       const dept = await tx.department.findUnique({
-        where: {
-          id: data.departmentId,
-          isActive: true,
-        },
+        where: { id: data.departmentId, isActive: true },
       });
-
-      if (!dept) {
-        throw new Error("Invalid departmentId");
-      }
+      if (!dept) throw new Error("Invalid departmentId");
     }
 
-    // ─────────────────────────────────────────────
-    // 3. Validate special unit
-    // ─────────────────────────────────────────────
+    // Resolve whether the resulting project is special-unit or district.
+    // • If specialUnitId is explicitly sent → use it (truthy = special unit, null/empty = district)
+    // • If specialUnitId is NOT in the payload → inherit from existing record
+    const isSpecialUnit =
+      data.specialUnitId !== undefined
+        ? !!data.specialUnitId
+        : existing.jurisdictionType === "SPECIAL_UNIT";
+
+    // ── 3. Validate special unit ──────────────────────────────
     if (data.specialUnitId) {
       const unit = await tx.specialUnits.findUnique({
-        where: {
-          id: data.specialUnitId,
-          isActive: true,
-        },
+        where: { id: data.specialUnitId, isActive: true },
       });
-
-      if (!unit) {
-        throw new Error("Invalid specialUnitId");
-      }
+      if (!unit) throw new Error("Invalid specialUnitId");
     }
 
-    // ─────────────────────────────────────────────
-    // 4. Validate district access
-    // ─────────────────────────────────────────────
-   if (data.specialUnitAccess) {
-  await validateDistrictIds(tx, data.specialUnitAccess);
-}
-
-    if (data.specialUnitAccess) {
-      await validateDistrictIds(tx, data.specialUnitAccess);
+    // ── 4. Validate district IDs (only for district projects) ─
+    if (!isSpecialUnit && data.districtAccess) {
+      await validateDistrictIds(tx, data.districtAccess);
     }
 
-    // ─────────────────────────────────────────────
-    // 5. Validate stages
-    // ─────────────────────────────────────────────
+    // ── 5. Validate stages ────────────────────────────────────
     if (data.stageIds?.length) {
       await validateStages(tx, data.stageIds);
     }
 
-    // ─────────────────────────────────────────────
-    // 6. Validate super structure
-    // ─────────────────────────────────────────────
+    // ── 6. Validate super-structure ───────────────────────────
     if (data.hasSuperStructure && data.superStructure?.length) {
       validateSuperStructureBlocks(data.superStructure);
     }
 
-    // ─────────────────────────────────────────────
-    // 7. Build update payload
-    // ─────────────────────────────────────────────
+    // ── 7. Build update payload ───────────────────────────────
     const updatePayload: any = {
       updatedById: data.updatedById ?? null,
     };
 
-    if (data.projectName !== undefined) {
-      updatePayload.projectName = data.projectName;
-    }
+    if (data.projectName !== undefined) updatePayload.projectName = data.projectName;
+    if (data.buildingType !== undefined) updatePayload.buildingType = data.buildingType;
+    if (data.location !== undefined) updatePayload.location = data.location;
+    if (data.departmentId !== undefined) updatePayload.departmentId = data.departmentId;
+    if (data.hasSuperStructure !== undefined) updatePayload.hasSuperStructure = data.hasSuperStructure;
+    if (data.stageIds !== undefined) updatePayload.selectedStages = data.stageIds;
+    if (data.status !== undefined) updatePayload.status = data.status;
 
-    if (data.buildingType !== undefined) {
-      updatePayload.buildingType = data.buildingType;
-    }
-
-    if (data.location !== undefined) {
-      updatePayload.location = data.location;
-    }
-
-    if (data.departmentId !== undefined) {
-      updatePayload.departmentId = data.departmentId;
-    }
-
-    if (data.hasSuperStructure !== undefined) {
-      updatePayload.hasSuperStructure = data.hasSuperStructure;
-    }
-
-    if (data.stageIds !== undefined) {
-      updatePayload.selectedStages = data.stageIds;
-    }
-
-    if (data.status !== undefined) {
-      updatePayload.status = data.status;
-    }
-
-    // jurisdiction type
+    // Jurisdiction / accessType
     if (data.specialUnitId !== undefined) {
-      updatePayload.jurisdictionType = data.specialUnitId
-        ? "SPECIAL_UNIT"
-        : "DISTRICT";
+      updatePayload.jurisdictionType = data.specialUnitId ? "SPECIAL_UNIT" : "DISTRICT";
     }
 
-    // access type
-    if (data.districtAccess?.accessType !== undefined) {
-      updatePayload.accessType =
-        data.districtAccess.accessType === "FULL_JURISDICTION"
-          ? "FULL_JURISDICTION"
-          : "SPECIFIC";
+    if (isSpecialUnit) {
+      // Special-unit projects always store FULL_JURISDICTION
+      updatePayload.accessType = "FULL_JURISDICTION";
+    } else if (data.districtAccess?.accessType !== undefined) {
+      updatePayload.accessType = data.districtAccess.accessType;
     }
 
-    // ─────────────────────────────────────────────
-    // 8. Update project
-    // ─────────────────────────────────────────────
-    const project = await tx.project.update({
-      where: { id },
-      data: updatePayload,
-    });
+    // ── 8. Update project row ─────────────────────────────────
+    await tx.project.update({ where: { id }, data: updatePayload });
 
-    // ─────────────────────────────────────────────
-    // 9. Replace access mappings
-    // ─────────────────────────────────────────────
-    if (
-      data.districtAccess !== undefined ||
-      data.specialUnitId !== undefined
-    ) {
-      // HARD DELETE old mappings
-      await tx.project_access_mapping.deleteMany({
-        where: {
-          projectId: id,
-        },
-      });
+    // ── 9. Replace access mappings when jurisdiction changes ──
+    const shouldReplaceAccess =
+      data.specialUnitId !== undefined || data.districtAccess !== undefined;
 
-      const effectiveDistrictAccess =
-        data.districtAccess ??
-        ({
+    if (shouldReplaceAccess) {
+      await tx.project_access_mapping.deleteMany({ where: { projectId: id } });
+
+      let accessRows: any[];
+
+      if (isSpecialUnit && data.specialUnitId) {
+        accessRows = buildSpecialUnitAccessRow(id, data.specialUnitId, data.updatedById);
+      } else if (!isSpecialUnit) {
+        const effectiveDistrictAccess: AccessRule = data.districtAccess ?? {
           accessType: "FULL_JURISDICTION",
-        } as AccessRule);
+        };
+        accessRows = buildDistrictAccessRows(id, effectiveDistrictAccess, data.updatedById);
+      } else {
+        accessRows = [];
+      }
 
-      // district rows
-      const districtRows = buildAccessMappingRows(
-        id,
-        effectiveDistrictAccess,
-        null,
-        data.updatedById
-      );
-
-      // special unit rows
-      const specialUnitRows =
-        data.specialUnitId && data.specialUnitAccess
-          ? buildAccessMappingRows(
-              id,
-              data.specialUnitAccess,
-              data.specialUnitId,
-              data.updatedById
-            )
-          : [];
-
-      await tx.project_access_mapping.createMany({
-        data: [...districtRows, ...specialUnitRows],
-      });
+      if (accessRows.length > 0) {
+        await tx.project_access_mapping.createMany({ data: accessRows });
+      }
     }
 
-    // ─────────────────────────────────────────────
-    // 10. Replace super structures
-    // ─────────────────────────────────────────────
+    // ── 10. Replace super-structures ──────────────────────────
     if (data.superStructure !== undefined) {
-      // HARD DELETE old blocks
-      await tx.superStructure.deleteMany({
-        where: {
-          projectId: id,
-        },
-      });
+      await tx.superStructure.deleteMany({ where: { projectId: id } });
 
-      // recreate
-      if (
-        data.hasSuperStructure &&
-        data.superStructure.length > 0
-      ) {
+      if (data.hasSuperStructure && data.superStructure.length > 0) {
         await tx.superStructure.createMany({
           data: data.superStructure.map((b) => ({
             projectId: id,
@@ -673,9 +589,7 @@ export const updateProjectService = async (
       }
     }
 
-    // ─────────────────────────────────────────────
-    // 11. Project history
-    // ─────────────────────────────────────────────
+    // ── 11. Project history ───────────────────────────────────
     await tx.project_history.create({
       data: {
         projectId: id,
@@ -687,23 +601,16 @@ export const updateProjectService = async (
       },
     });
 
-    // ─────────────────────────────────────────────
-    // 12. Return updated project
-    // ─────────────────────────────────────────────
+    // ── 12. Return updated project ────────────────────────────
     return await tx.project.findUnique({
       where: { id },
       include: {
         department: true,
         projectAccessMappings: {
           where: { isActive: true },
-          include: {
-            district: true,
-            specialUnit: true,
-          },
+          include: { district: true, specialUnit: true },
         },
-        superStructures: {
-          where: { isActive: true },
-        },
+        superStructures: { where: { isActive: true } },
       },
     });
   });
@@ -716,31 +623,18 @@ export const updateProjectService = async (
 export const deleteProjectService = async (id: string) => {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.project.findUnique({ where: { id } });
-    if (!existing || !existing.isActive) {
-      throw new Error("Project not found");
-    }
+    if (!existing || !existing.isActive) throw new Error("Project not found");
 
-    await tx.project.update({
-      where: { id },
-      data: { isActive: false },
-    });
-
-    await tx.superStructure.updateMany({
-      where: { projectId: id },
-      data: { isActive: false },
-    });
-
-    await tx.project_access_mapping.updateMany({
-      where: { projectId: id },
-      data: { isActive: false },
-    });
+    await tx.project.update({ where: { id }, data: { isActive: false } });
+    await tx.superStructure.updateMany({ where: { projectId: id }, data: { isActive: false } });
+    await tx.project_access_mapping.updateMany({ where: { projectId: id }, data: { isActive: false } });
 
     return { message: "Project deleted successfully" };
   });
 };
 
 // ─────────────────────────────────────────────────────────────
-// GET PROJECTS BY USER (with stage completion tracking)
+// GET PROJECTS BY USER
 // ─────────────────────────────────────────────────────────────
 
 export const getProjectsByUserService = async ({
@@ -762,11 +656,8 @@ export const getProjectsByUserService = async ({
   } = pageConfig({ pageNumber, pageSize });
 
   const where: any = { isActive: true };
-
   if (userId) where.createdByUserId = userId;
-  if (search) {
-    where.projectName = { contains: search, mode: "insensitive" };
-  }
+  if (search) where.projectName = { contains: search, mode: "insensitive" };
 
   const [projects, totalRecords] = await Promise.all([
     prisma.project.findMany({
@@ -801,54 +692,37 @@ export const getProjectsByUserService = async ({
     prisma.project.count({ where }),
   ]);
 
-  // ── Stage name → DB relation mapping ─────────────────────────
   function getCompletedStageNames(p: (typeof projects)[0]): string[] {
     const done: string[] = [];
     if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
-    if (
-      p.foundationProgresses.length > 0 ||
-      p.foundationQualityChecks.length > 0
-    )
-      done.push("Foundation");
+    if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
-    if (p.SuperStructureProgress.length > 0 || p.superStructureQuality)
-      done.push("Super Structure");
-    if (p.interiorsProgress.length > 0 || p.interiorsQuality)
-      done.push("Interiors");
-    if (p.exteriorsProgress.length > 0 || p.exteriorsQuality)
-      done.push("Exteriors");
+    if (p.SuperStructureProgress.length > 0 || p.superStructureQuality) done.push("Super Structure");
+    if (p.interiorsProgress.length > 0 || p.interiorsQuality) done.push("Interiors");
+    if (p.exteriorsProgress.length > 0 || p.exteriorsQuality) done.push("Exteriors");
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
     if (p.DevelopmentWork.length > 0) done.push("Development Work");
-    if (p.TakeoverBuildingInsepction.length > 0)
-      done.push("Takeover Building Inspection");
-    if (p.TakeoverDevelopmentWork.length > 0)
-      done.push("Takeover Development Work");
+    if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
+    if (p.TakeoverDevelopmentWork.length > 0) done.push("Takeover Development Work");
     return done;
   }
 
   const data = projects.map((p) => {
+    const isSpecialUnit = p.jurisdictionType === "SPECIAL_UNIT";
+    const specialUnitMapping = p.projectAccessMappings.find((m) => !!m.specialUnitId);
+    const districtMappings = p.projectAccessMappings.filter((m) => !m.specialUnitId);
+
     const selectedStageCount = Array.isArray(p.selectedStages)
       ? (p.selectedStages as string[]).length
       : 0;
-
     const completedStageNames = getCompletedStageNames(p);
     const completedStages = completedStageNames.length;
     const pendingStages = Math.max(0, selectedStageCount - completedStages);
 
     let projectStatus = "AssignedProjects";
-    if (completedStages > 0 && pendingStages > 0)
-      projectStatus = "OngoingProjects";
-    if (completedStages >= selectedStageCount && selectedStageCount > 0)
-      projectStatus = "CompletedProjects";
-
-    // District / special unit access summary
-    const districtMappings = p.projectAccessMappings.filter(
-      (m) => !m.specialUnitId
-    );
-    const specialUnitMappings = p.projectAccessMappings.filter(
-      (m) => !!m.specialUnitId
-    );
+    if (completedStages > 0 && pendingStages > 0) projectStatus = "OngoingProjects";
+    if (completedStages >= selectedStageCount && selectedStageCount > 0) projectStatus = "CompletedProjects";
 
     return {
       id: p.id,
@@ -858,35 +732,28 @@ export const getProjectsByUserService = async ({
       location: p.location,
       departmentName: p.department?.name ?? null,
       jurisdictionType: p.jurisdictionType,
-      accessType: p.accessType,
+      accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
 
-      districtAccess: {
-        accessType: p.accessType,
-        districts: districtMappings
-          .filter((m) => m.districtId)
-          .map((m) => ({
-            districtId: m.districtId,
-            districtName: m.district?.name ?? null,
-            districtType: m.district?.type ?? null,
-          })),
-      },
+      districtAccess: isSpecialUnit
+        ? null
+        : {
+            accessType: p.accessType,
+            districts: districtMappings
+              .filter((m) => m.districtId)
+              .map((m) => ({
+                districtId: m.districtId,
+                districtName: m.district?.name ?? null,
+                districtType: m.district?.type ?? null,
+              })),
+          },
 
-      specialUnitAccess:
-        specialUnitMappings.length > 0
-          ? {
-              specialUnitId: specialUnitMappings[0].specialUnitId ?? null,
-              specialUnitName:
-                specialUnitMappings[0].specialUnit?.name ?? null,
-              districts: specialUnitMappings
-                .filter((m) => m.districtId)
-                .map((m) => ({
-                  districtId: m.districtId,
-                  districtName: m.district?.name ?? null,
-                  districtType: m.district?.type ?? null,
-                })),
-            }
-          : null,
+      specialUnitAccess: isSpecialUnit && specialUnitMapping
+        ? {
+            specialUnitId: specialUnitMapping.specialUnitId ?? null,
+            specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
+          }
+        : null,
 
       selectedStageCount,
       completedStages,
@@ -960,24 +827,15 @@ export const getProjectDashboardService = async (userId?: string) => {
     const done: string[] = [];
     if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
-    if (
-      p.foundationProgresses.length > 0 ||
-      p.foundationQualityChecks.length > 0
-    )
-      done.push("Foundation");
+    if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
-    if (p.SuperStructureProgress.length > 0 || p.superStructureQuality)
-      done.push("Super Structure");
-    if (p.interiorsProgress.length > 0 || p.interiorsQuality)
-      done.push("Interiors");
-    if (p.exteriorsProgress.length > 0 || p.exteriorsQuality)
-      done.push("Exteriors");
+    if (p.SuperStructureProgress.length > 0 || p.superStructureQuality) done.push("Super Structure");
+    if (p.interiorsProgress.length > 0 || p.interiorsQuality) done.push("Interiors");
+    if (p.exteriorsProgress.length > 0 || p.exteriorsQuality) done.push("Exteriors");
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
     if (p.DevelopmentWork.length > 0) done.push("Development Work");
-    if (p.TakeoverBuildingInsepction.length > 0)
-      done.push("Takeover Building Inspection");
-    if (p.TakeoverDevelopmentWork.length > 0)
-      done.push("Takeover Development Work");
+    if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
+    if (p.TakeoverDevelopmentWork.length > 0) done.push("Takeover Development Work");
 
     const doneCount = done.length;
     const pendingCount = Math.max(0, selectedStageCount - doneCount);
@@ -986,13 +844,9 @@ export const getProjectDashboardService = async (userId?: string) => {
     completedInspections += doneCount;
     pendingInspections += pendingCount;
 
-    if (doneCount === 0) {
-      assignedProjects++;
-    } else if (doneCount > 0 && pendingCount > 0) {
-      ongoingProjects++;
-    } else {
-      completedProjects++;
-    }
+    if (doneCount === 0) assignedProjects++;
+    else if (doneCount > 0 && pendingCount > 0) ongoingProjects++;
+    else completedProjects++;
   }
 
   return {
