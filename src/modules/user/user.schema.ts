@@ -80,9 +80,9 @@ const managementEntrySchema = Joi.object({
 
 // ─── CREATE USER ──────────────────────────────────────────────
 export const createUserSchema = Joi.object({
-  userName: Joi.string().max(15).required().messages({
+  userName: Joi.string().max(50).required().messages({
     "string.empty": "Username is required",
-    "string.max": "Username must be at most 15 characters",
+    "string.max": "Username must be at most 50 characters",
     "any.required": "Username is required",
   }),
   email: Joi.string().email().optional().allow(null, "").messages({
@@ -104,8 +104,8 @@ export const createUserSchema = Joi.object({
 
 // ─── UPDATE USER ──────────────────────────────────────────────
 export const updateUserSchema = Joi.object({
-  userName: Joi.string().max(15).optional().messages({
-    "string.max": "Username must be at most 15 characters",
+  userName: Joi.string().max(50).optional().messages({
+    "string.max": "Username must be at most 50 characters",
   }),
   email: Joi.string().email().optional().messages({
     "string.email": "Enter a valid email address",
