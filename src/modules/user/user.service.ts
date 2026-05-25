@@ -15,15 +15,15 @@ type DistrictAssignment = {
 
 type ManagementEntry = {
   departmentId: string;
-  accessType: "SPECIFIC" | "JURISDICTION";
+  accessType?: "SPECIFIC" | "FULL_JURISDICTION"; // optional when specialUnitId is set
   districts?: DistrictAssignment[];
   specialUnitId?: string | null;
-  specialUnitAccessType?: "SPECIFIC" | "JURISDICTION";
+  // specialUnitAccessType removed — special unit always stores as FULL_JURISDICTION
 };
 
 type CreateUserInput = {
   userName: string;
-  email: string;
+  email?: string;
   password: string;
   roleId: string;
   roleName?: string;
@@ -45,18 +45,19 @@ type UpdateUserInput = {
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
-/** Strip sensitive fields before returning any user object */
-function safeUser<T extends { passwordHash?: any }>(user: T): Omit<T, "passwordHash"> {
+/** Strip passwordHash before returning any user object */
+function safeUser<T extends { passwordHash?: any }>(
+  user: T
+): Omit<T, "passwordHash"> {
   const { passwordHash, ...rest } = user as any;
   return rest;
 }
 
-/** Same but for arrays */
 function safeUsers<T extends { passwordHash?: any }>(users: T[]) {
   return users.map(safeUser);
 }
 
-/** Resolve the role name from DB if not passed by client */
+/** Resolve role name from DB if not supplied by client */
 async function resolveRoleName(
   roleId: string,
   roleName?: string
@@ -67,7 +68,6 @@ async function resolveRoleName(
   return role.name.toLowerCase().trim();
 }
 
-/** Returns true if the role bypasses department/district requirements */
 function isStandaloneRole(roleName: string): boolean {
   return STANDALONE_ROLES.map((r) => r.toLowerCase()).includes(roleName);
 }
@@ -75,10 +75,18 @@ function isStandaloneRole(roleName: string): boolean {
 /**
  * Build user_management rows from a ManagementEntry list.
  *
- * Rules:
- *  - JURISDICTION → one row with districtId = null
- *  - SPECIFIC     → one row per selected district/city
- *  - Special unit → additional row(s) if provided
+ * Three paths:
+ *
+ * 1. specialUnitId present
+ *    → ONE row: districtId=null, access_type=FULL_JURISDICTION, specialUnitId=set
+ *    → No districts or accessType needed from client
+ *
+ * 2. accessType = FULL_JURISDICTION (no specialUnitId)
+ *    → ONE row: districtId=null, access_type=FULL_JURISDICTION, specialUnitId=null
+ *
+ * 3. accessType = SPECIFIC (no specialUnitId)
+ *    → ONE row per district/city entry
+ *    → districts[] must have at least 1 entry
  */
 function buildManagementRows(
   userId: string,
@@ -88,11 +96,6 @@ function buildManagementRows(
   const rows: any[] = [];
 
   for (const entry of managements) {
-    // Field names must match the Prisma model field names exactly.
-    // userId, departmentId, districtId, specialUnitId have NO @map() → use camelCase.
-    // access_type, district_type are defined as snake_case directly in the model → use as-is.
-    // createdById has @map("created_by") → use camelCase (createdById).
-    // isActive has @map("is_active") → use camelCase (isActive).
     const base = {
       userId,
       departmentId: entry.departmentId,
@@ -100,16 +103,31 @@ function buildManagementRows(
       isActive: true,
     };
 
-    if (entry.accessType === "JURISDICTION") {
+    const isSpecialUnit =
+      !!entry.specialUnitId && entry.specialUnitId.trim() !== "";
+
+    if (isSpecialUnit) {
+      // ── PATH 1: Special Unit ───────────────────────────────
+      // Always FULL_JURISDICTION; no district concept.
+      rows.push({
+        ...base,
+        districtId: null,
+        district_type: null,
+        specialUnitId: entry.specialUnitId,
+        access_type: "FULL_JURISDICTION",
+      });
+    } else if (entry.accessType === "FULL_JURISDICTION") {
+      // ── PATH 2: Full Jurisdiction ──────────────────────────
+      // One row, no district, no special unit.
       rows.push({
         ...base,
         districtId: null,
         district_type: null,
         specialUnitId: null,
-        access_type: "JURISDICTION",
+        access_type: "FULL_JURISDICTION",
       });
     } else {
-      // SPECIFIC — one row per selected district/city
+      // ── PATH 3: Specific Districts/Cities ──────────────────
       const districts = entry.districts ?? [];
       if (districts.length === 0) {
         throw new Error(
@@ -126,37 +144,13 @@ function buildManagementRows(
         });
       }
     }
-
-    // Special unit rows (police only — caller enforces this)
-    if (entry.specialUnitId) {
-      if (entry.specialUnitAccessType === "JURISDICTION") {
-        rows.push({
-          ...base,
-          districtId: null,
-          district_type: null,
-          specialUnitId: entry.specialUnitId,
-          access_type: "JURISDICTION",
-        });
-      } else {
-        const districts = entry.districts ?? [];
-        for (const d of districts) {
-          rows.push({
-            ...base,
-            districtId: d.districtId,
-            district_type: d.districtType,
-            specialUnitId: entry.specialUnitId,
-            access_type: "SPECIFIC",
-          });
-        }
-      }
-    }
   }
 
   return rows;
 }
 
 // ─────────────────────────────────────────────────────────────
-// GET ALL
+// GET ALL USERS
 // ─────────────────────────────────────────────────────────────
 
 export const getAllUsersService = async (filters?: {
@@ -180,9 +174,9 @@ export const getAllUsersService = async (filters?: {
       { email: { contains: filters.search, mode: "insensitive" } },
     ];
   }
+
   if (filters?.roleId) where.roleId = filters.roleId;
 
-  // Filter by department/district/specialUnit via userManagements
   const hasMgmtFilter =
     filters?.departmentId || filters?.districtId || filters?.specialUnitId;
 
@@ -244,49 +238,62 @@ export const getUserByIdService = async (id: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// CREATE
+// CREATE USER
 // ─────────────────────────────────────────────────────────────
 
 export const createUserService = async (data: CreateUserInput) => {
+  // ── Basic validation ──────────────────────────────────────
   if (!data.password) throw new Error("Password is required");
   if (!data.userName?.trim()) throw new Error("Username is required");
-  // if (!data.email?.trim()) throw new Error("Email is required");
   if (!data.roleId) throw new Error("Role is required");
 
+  // ── Resolve role ──────────────────────────────────────────
   const roleName = await resolveRoleName(data.roleId, data.roleName);
   const standalone = isStandaloneRole(roleName);
 
-  // Non-standalone roles MUST have at least one management entry
+  // ── Non-standalone must have at least one management ──────
   if (!standalone) {
     if (!data.managements || data.managements.length === 0) {
       throw new Error(
         "At least one department assignment is required for this role"
       );
     }
+    // Validate each management entry has the required fields
+    for (const entry of data.managements) {
+      const isSpecialUnit =
+        !!entry.specialUnitId && entry.specialUnitId.trim() !== "";
+
+      if (!isSpecialUnit && !entry.accessType) {
+        throw new Error(
+          `accessType is required for department ${entry.departmentId} when no specialUnitId is provided`
+        );
+      }
+
+      if (!isSpecialUnit && entry.accessType === "SPECIFIC") {
+        if (!entry.districts || entry.districts.length === 0) {
+          throw new Error(
+            `At least one district or city is required for SPECIFIC access on department ${entry.departmentId}`
+          );
+        }
+      }
+    }
   }
 
-  // Unique email (only if provided)
-  // if (data.email && data.email.trim() !== "") {
-  //   const existingEmail = await prisma.user.findUnique({
-  //     where: { email: data.email },
-  //   });
-  //   if (existingEmail) throw new Error("Email already in use");
-  // }
-
-  // Unique username
+  // ── Username uniqueness ───────────────────────────────────
   const existingUser = await prisma.user.findFirst({
     where: { username: data.userName },
   });
   if (existingUser) throw new Error("Username already taken");
 
+  // ── Hash password ─────────────────────────────────────────
   const passwordHash = await bcrypt.hash(data.password, 10);
 
-  // Create user + management rows in one transaction
+  // ── Transaction: create user + management rows ────────────
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         username: data.userName,
-        email: data.email,
+        email: data.email ?? null,
         passwordHash,
         roleId: data.roleId,
         createdById: data.createdById ?? null,
@@ -295,11 +302,7 @@ export const createUserService = async (data: CreateUserInput) => {
     });
 
     if (!standalone && data.managements && data.managements.length > 0) {
-      const rows = buildManagementRows(
-        user.id,
-        data.managements,
-        data.createdById
-      );
+      const rows = buildManagementRows(user.id, data.managements, data.createdById);
       await tx.user_management.createMany({ data: rows });
     }
 
@@ -313,27 +316,21 @@ export const createUserService = async (data: CreateUserInput) => {
         },
       },
     });
+
     return created ? safeUser(created) : null;
   });
 };
 
 // ─────────────────────────────────────────────────────────────
-// UPDATE
+// UPDATE USER
 // ─────────────────────────────────────────────────────────────
 
 export const updateUserService = async (id: string, data: UpdateUserInput) => {
+  // ── Check user exists ─────────────────────────────────────
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing || !existing.isActive) throw new Error("User not found");
 
-  // // Email uniqueness
-  // if (data.email && data.email !== existing.email) {
-  //   const emailExists = await prisma.user.findFirst({
-  //     where: { email: data.email, NOT: { id } },
-  //   });
-  //   if (emailExists) throw new Error("Email already in use");
-  // }
-
-  // Username uniqueness
+  // ── Username uniqueness ───────────────────────────────────
   if (data.userName && data.userName !== existing.username) {
     const unameExists = await prisma.user.findFirst({
       where: { username: data.userName, NOT: { id } },
@@ -341,6 +338,7 @@ export const updateUserService = async (id: string, data: UpdateUserInput) => {
     if (unameExists) throw new Error("Username already taken");
   }
 
+  // ── Build update payload ──────────────────────────────────
   const updatePayload: any = {
     updatedById: data.updatedById ?? null,
   };
@@ -350,21 +348,40 @@ export const updateUserService = async (id: string, data: UpdateUserInput) => {
   if (data.roleId) updatePayload.roleId = data.roleId;
 
   if (data.passwordTemp) {
-    updatePayload.passwordHash = await bcrypt.hash(
-      String(data.passwordTemp),
-      10
-    );
+    updatePayload.passwordHash = await bcrypt.hash(String(data.passwordTemp), 10);
   }
 
   return prisma.$transaction(async (tx) => {
-    // Update user fields
+    // ── Update user fields ────────────────────────────────
     await tx.user.update({ where: { id }, data: updatePayload });
 
-    // If managements are provided, replace them (soft-delete old, create new)
+    // ── Replace managements if provided ───────────────────
     if (data.managements !== undefined) {
       const roleId = data.roleId ?? existing.roleId;
       const roleName = await resolveRoleName(roleId, data.roleName);
       const standalone = isStandaloneRole(roleName);
+
+      // Validate management entries (same rules as create)
+      if (!standalone && data.managements && data.managements.length > 0) {
+        for (const entry of data.managements) {
+          const isSpecialUnit =
+            !!entry.specialUnitId && entry.specialUnitId.trim() !== "";
+
+          if (!isSpecialUnit && !entry.accessType) {
+            throw new Error(
+              `accessType is required for department ${entry.departmentId} when no specialUnitId is provided`
+            );
+          }
+
+          if (!isSpecialUnit && entry.accessType === "SPECIFIC") {
+            if (!entry.districts || entry.districts.length === 0) {
+              throw new Error(
+                `At least one district or city is required for SPECIFIC access on department ${entry.departmentId}`
+              );
+            }
+          }
+        }
+      }
 
       // Soft-delete all existing active management rows
       await tx.user_management.updateMany({
@@ -372,7 +389,7 @@ export const updateUserService = async (id: string, data: UpdateUserInput) => {
         data: { isActive: false, updatedById: data.updatedById ?? null },
       });
 
-      // Create new rows (unless standalone role with empty managements)
+      // Create new rows (unless standalone role)
       if (!standalone && data.managements && data.managements.length > 0) {
         const rows = buildManagementRows(id, data.managements, data.updatedById);
         await tx.user_management.createMany({ data: rows });
@@ -389,6 +406,7 @@ export const updateUserService = async (id: string, data: UpdateUserInput) => {
         },
       },
     });
+
     return updated ? safeUser(updated) : null;
   });
 };
@@ -428,24 +446,17 @@ export const loginService = async (data: {
       role: true,
       userManagements: {
         where: { isActive: true },
-        include: {
-          department: true,
-          district: true,
-          specialUnit: true,
-        },
+        include: { department: true, district: true, specialUnit: true },
       },
     },
   });
 
   if (!user) throw new Error("Invalid credentials");
 
-  // Password check — support legacy plaintext → hash migration
   let isMatch = false;
-
   if (user.passwordHash && user.passwordHash.trim() !== "") {
     isMatch = await bcrypt.compare(data.password, user.passwordHash);
   } else {
-    // No hash set at all — should not happen in normal flow
     throw new Error("Invalid credentials");
   }
 
