@@ -19,7 +19,8 @@ import {
   updateQualityController,
   getProgressByProjectController,
   getQualityByProjectController,
-  deleteProgressController
+  deleteProgressController,
+  downloadSuperStructurePdfController
 } from "./superStructureProgress.controller";
 
 const router = express.Router();
@@ -93,6 +94,13 @@ router.put(
   validateRequest(updateQualityParamSchema, "params"),
   validateRequest(updateQualitySchema, "body"),
   updateQualityController
+);
+
+
+
+router.get(
+  "/download-pdf/:projectId",
+  downloadSuperStructurePdfController
 );
 
 export default router;

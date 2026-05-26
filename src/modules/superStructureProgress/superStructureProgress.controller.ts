@@ -9,6 +9,9 @@ import {
   getProgressByProjectUsecase,
   getQualityByProjectUsecase
 } from "./superStructureProgress.usecase";
+import {
+  generateSuperStructurePdf
+} from "./superStructurePdf.service";
 
 const getSingleValue = (val: any): string =>
   Array.isArray(val) ? val[0] : val;
@@ -121,3 +124,33 @@ export const getQualityByProjectController = async (
     res.status(400).json({ success: false, message: e.message });
   }
 };
+
+export const downloadSuperStructurePdfController =
+  async (
+    req: Request,
+    res: Response
+  ) => {
+
+    try {
+
+      const projectId =
+        getSingleValue(req.params.projectId);
+
+      const pdf =
+        await generateSuperStructurePdf(
+          projectId
+        );
+
+      return res.status(200).json({
+        success: true,
+        downloadUrl: pdf.url
+      });
+
+    } catch (e: any) {
+
+      return res.status(500).json({
+        success: false,
+        message: e.message
+      });
+    }
+  };
