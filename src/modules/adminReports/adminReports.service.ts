@@ -1,30 +1,21 @@
 import prisma from "../../shared/prisma";
 import { pageConfig } from "../../utils/query.helper";
 
-// ─────────────────────────────────────────────
-// Exact stage names as stored in the `stages` table
-// and referenced in project.selectedStages JSON array
-// ─────────────────────────────────────────────
 const ALL_STAGES = [
-  { key: "Land Site Inspection",   label: "Land Site Inspection"   },
-  { key: "Pre-Construction",       label: "Pre-Construction"       },
-  { key: "Foundation Stage",       label: "Foundation Stage"       },
-  { key: "Plinth Stage",           label: "Plinth Stage"           },
-  { key: "Superstructure Stage",   label: "Superstructure Stage"   },
+  { key: "Land Site Inspection",     label: "Land Site Inspection"     },
+  { key: "Pre-Construction",         label: "Pre-Construction"         },
+  { key: "Foundation Stage",         label: "Foundation Stage"         },
+  { key: "Plinth Stage",             label: "Plinth Stage"             },
+  { key: "Superstructure Stage",     label: "Superstructure Stage"     },
   { key: "Non Superstructure Stage", label: "Non Superstructure Stage" },
-  { key: "Interiors",              label: "Interiors"              },
-  { key: "Exteriors",              label: "Exteriors"              },
-  { key: "Development Work",       label: "Development Work"       },
-  { key: "Take Over",              label: "Take Over"              },
+  { key: "Interiors",                label: "Interiors"                },
+  { key: "Exteriors",                label: "Exteriors"                },
+  { key: "Development Work",         label: "Development Work"         },
+  { key: "Take Over",                label: "Take Over"                },
 ] as const;
 
 type StageKey = (typeof ALL_STAGES)[number]["key"];
 
-// ─────────────────────────────────────────────
-// Normalize any raw stored value → canonical key
-// Handles underscores, extra spaces, casing differences
-// e.g. "foundation_stage" / "FOUNDATION STAGE" / "Foundation Stage" → "Foundation Stage"
-// ─────────────────────────────────────────────
 function normalizeKey(raw: string): StageKey | null {
   const cleaned = raw
     .replace(/_/g, " ")
@@ -34,14 +25,11 @@ function normalizeKey(raw: string): StageKey | null {
     .trim();
 
   const found = ALL_STAGES.find(
-    (s) => s.key.toLowerCase() === cleaned
+    (s: { key: string; label: string }) => s.key.toLowerCase() === cleaned
   );
   return found ? found.key : null;
 }
 
-// ─────────────────────────────────────────────
-// started / completed logic per stage key
-// ─────────────────────────────────────────────
 function resolveStageStatus(
   key: StageKey,
   project: any
@@ -52,13 +40,11 @@ function resolveStageStatus(
         started:   project.landSiteInspection.length > 0,
         completed: project.landSiteInspection.length > 0,
       };
-
     case "Pre-Construction":
       return {
         started:   project.preConstructionInspections.length > 0,
         completed: project.preConstructionInspections.length > 0,
       };
-
     case "Foundation Stage":
       return {
         started:
@@ -66,45 +52,36 @@ function resolveStageStatus(
           project.foundationQualityChecks.length > 0,
         completed: project.foundationQualityChecks.length > 0,
       };
-
     case "Plinth Stage":
       return {
         started:   project.plinthStages.length > 0,
         completed: project.plinthStages.length > 0,
       };
-
-    // hasSuperStructure = true → uses superStructure blocks/floors
     case "Superstructure Stage":
       return {
         started:   project.SuperStructureProgress.length > 0,
         completed: !!project.superStructureQuality,
       };
-
-    // hasSuperStructure = false → still tracks progress the same way
     case "Non Superstructure Stage":
       return {
         started:   project.SuperStructureProgress.length > 0,
         completed: !!project.superStructureQuality,
       };
-
     case "Interiors":
       return {
         started:   project.interiorsProgress.length > 0,
         completed: !!project.interiorsQuality,
       };
-
     case "Exteriors":
       return {
         started:   project.exteriorsProgress.length > 0,
         completed: !!project.exteriorsQuality,
       };
-
     case "Development Work":
       return {
         started:   project.DevelopmentWork.length > 0,
         completed: project.DevelopmentWork.length > 0,
       };
-
     case "Take Over":
       return {
         started:
@@ -114,15 +91,69 @@ function resolveStageStatus(
           project.TakeoverBuildingInsepction.length > 0 &&
           project.TakeoverDevelopmentWork.length > 0,
       };
-
     default:
       return { started: false, completed: false };
   }
 }
 
 // ─────────────────────────────────────────────
-// Extra detail payload per stage
+// FIX 1: blockField can be null in interiors/exteriors
+// Match by blockName OR by floor entry (when block is null, group under "General")
+// FIX 3: completedFloors = floors with status COMPLETED
+//         startedFloors  = floors with ANY progress entry
 // ─────────────────────────────────────────────
+function buildBlockSummary(
+  superStructures: any[],
+  progressList: any[],
+  blockField: string   // "blockName" for superStructure, "block" for interiors/exteriors
+) {
+  return superStructures.map((block: any) => {
+    const blockProgress = progressList.filter((p: any) => {
+      const val = p[blockField];
+      // match by blockName; if null in progress, still try to match
+      return val === block.blockName || val === null;
+    });
+
+    const totalFloors     = block.totalFloors ?? 0;
+    const completedFloors = blockProgress.filter(
+      (p: any) => p.status === "COMPLETED"
+    ).length;
+    const startedFloors   = blockProgress.length; // any entry means floor is started
+
+    // Group progress by floor
+    const floorMap: Record<string, any[]> = {};
+    for (const p of blockProgress) {
+      const floorKey = p.floorName ?? p.floor ?? "General";
+      if (!floorMap[floorKey]) floorMap[floorKey] = [];
+      floorMap[floorKey].push(p);
+    }
+
+    const floorDetails = Object.entries(floorMap).map(([floorName, entries]) => ({
+      floorName,
+      status: entries.every((e: any) => e.status === "COMPLETED")
+        ? "COMPLETED"
+        : entries.length > 0
+        ? "IN_PROGRESS"
+        : "NOT_STARTED",
+      entries,
+    }));
+
+    return {
+      blockName:      block.blockName,
+      totalFloors,
+      floors:         block.floors ?? [],
+      completedFloors,
+      startedFloors,
+      status:
+        completedFloors === totalFloors && totalFloors > 0 ? "COMPLETED"
+        : startedFloors > 0                               ? "IN_PROGRESS"
+        : "NOT_STARTED",
+      // FIX 2: floor-level breakdown instead of raw progressRecords
+      floorDetails,
+    };
+  });
+}
+
 function resolveStageDetail(
   key: StageKey,
   project: any,
@@ -133,20 +164,32 @@ function resolveStageDetail(
   completedSuperFloors: number
 ): Record<string, any> {
   switch (key) {
+
     case "Land Site Inspection":
-      return { recordCount: project.landSiteInspection.length };
+      return {
+        recordCount: project.landSiteInspection.length,
+        records:     project.landSiteInspection,
+      };
 
     case "Pre-Construction":
-      return { recordCount: project.preConstructionInspections.length };
+      return {
+        recordCount: project.preConstructionInspections.length,
+        records:     project.preConstructionInspections,
+      };
 
     case "Foundation Stage":
       return {
         progressCount:     project.foundationProgresses.length,
         qualityCheckCount: project.foundationQualityChecks.length,
+        progresses:        project.foundationProgresses,
+        qualityChecks:     project.foundationQualityChecks,
       };
 
     case "Plinth Stage":
-      return { recordCount: project.plinthStages.length };
+      return {
+        recordCount: project.plinthStages.length,
+        records:     project.plinthStages,
+      };
 
     case "Superstructure Stage":
       return {
@@ -155,7 +198,9 @@ function resolveStageDetail(
         totalFloors:       totalSuperFloors,
         completedFloors:   completedSuperFloors,
         qualityChecked:    !!project.superStructureQuality,
+        // blocks has floorDetails grouped by floor (no duplicate progressRecords)
         blocks:            superStructureBlocks,
+        qualityRecord:     project.superStructureQuality ?? null,
       };
 
     case "Non Superstructure Stage":
@@ -163,13 +208,17 @@ function resolveStageDetail(
         hasSuperStructure: false,
         qualityChecked:    !!project.superStructureQuality,
         progressCount:     project.SuperStructureProgress.length,
+        blocks:            superStructureBlocks,
+        qualityRecord:     project.superStructureQuality ?? null,
       };
 
     case "Interiors":
       return {
         totalBlocks:    project.superStructures.length,
         qualityChecked: !!project.interiorsQuality,
+        // FIX 1: interiorBlocks now correctly matches null-block progress entries
         blocks:         interiorBlocks,
+        qualityRecord:  project.interiorsQuality ?? null,
       };
 
     case "Exteriors":
@@ -177,15 +226,21 @@ function resolveStageDetail(
         totalBlocks:    project.superStructures.length,
         qualityChecked: !!project.exteriorsQuality,
         blocks:         exteriorBlocks,
+        qualityRecord:  project.exteriorsQuality ?? null,
       };
 
     case "Development Work":
-      return { recordCount: project.DevelopmentWork.length };
+      return {
+        recordCount: project.DevelopmentWork.length,
+        records:     project.DevelopmentWork,
+      };
 
     case "Take Over":
       return {
         buildingInspectionCount: project.TakeoverBuildingInsepction.length,
         developmentWorkCount:    project.TakeoverDevelopmentWork.length,
+        buildingInspections:     project.TakeoverBuildingInsepction,
+        developmentWorks:        project.TakeoverDevelopmentWork,
       };
 
     default:
@@ -193,39 +248,10 @@ function resolveStageDetail(
   }
 }
 
-// ─────────────────────────────────────────────
-// Per-block floor progress summary
-// ─────────────────────────────────────────────
-function buildBlockSummary(
-  superStructures: any[],
-  progressList: any[],
-  blockField: string
-) {
-  return superStructures.map((block) => {
-    const blockProgress   = progressList.filter((p) => p[blockField] === block.blockName);
-    const totalFloors     = block.totalFloors ?? 0;
-    const completedFloors = blockProgress.filter((p) => p.status === "COMPLETED").length;
-
-    return {
-      blockName: block.blockName,
-      totalFloors,
-      floors:         block.floors ?? [],
-      completedFloors,
-      status:
-        completedFloors === 0           ? "NOT_STARTED"
-        : completedFloors === totalFloors ? "COMPLETED"
-        : "IN_PROGRESS",
-    };
-  });
-}
-
-// ─────────────────────────────────────────────
-// District / Special Unit access from mappings
-// ─────────────────────────────────────────────
 function buildAccessInfo(project: any) {
   const mappings: any[]     = project.projectAccessMappings ?? [];
-  const districtMappings    = mappings.filter((m) => m.districtId);
-  const specialUnitMappings = mappings.filter((m) => m.specialUnitId);
+  const districtMappings    = mappings.filter((m: any) => m.districtId);
+  const specialUnitMappings = mappings.filter((m: any) => m.specialUnitId);
 
   let districtAccess:    any = null;
   let specialUnitAccess: any = null;
@@ -236,7 +262,7 @@ function buildAccessInfo(project: any) {
   ) {
     districtAccess = {
       accessType: project.accessType,
-      districts:  districtMappings.map((m) => ({
+      districts:  districtMappings.map((m: any) => ({
         districtId:   m.districtId,
         districtName: m.district?.name ?? null,
         districtType: m.district?.type ?? null,
@@ -274,6 +300,16 @@ export const getAdminDashboardReportService = async ({
     whereClause.projectName = { contains: search, mode: "insensitive" };
   }
 
+  // ── Fetch all stages once → build UUID-to-name map ──
+  const allStagesFromDB = await prisma.stage.findMany({
+    where:  { isActive: true },
+    select: { id: true, name: true },
+  });
+
+  const stageIdToName = new Map<string, string>(
+    allStagesFromDB.map((s: { id: string; name: string }) => [s.id, s.name])
+  );
+
   const [projects, totalRecords] = await Promise.all([
     prisma.project.findMany({
       where: whereClause,
@@ -310,10 +346,10 @@ export const getAdminDashboardReportService = async ({
         exteriorsProgress: { where: { isActive: true } },
         exteriorsQuality:  true,
 
-        BuildingInspection:        { where: { isActive: true } },
-        DevelopmentWork:           { where: { isActive: true } },
+        BuildingInspection:         { where: { isActive: true } },
+        DevelopmentWork:            { where: { isActive: true } },
         TakeoverBuildingInsepction: { where: { isActive: true } },
-        TakeoverDevelopmentWork:   { where: { isActive: true } },
+        TakeoverDevelopmentWork:    { where: { isActive: true } },
 
         projectHistories: {
           where:   { isActive: true },
@@ -332,25 +368,29 @@ export const getAdminDashboardReportService = async ({
   // ─────────────────────────────────────────────
   // FORMAT EACH PROJECT
   // ─────────────────────────────────────────────
-  const formattedProjects = projects.map((project) => {
+  const formattedProjects = projects.map((project: any) => {
 
-    // ── Normalize selectedStages JSON → canonical keys ──
+    // ── Resolve selectedStages UUIDs → canonical stage name keys ──
     const rawStages: string[] = Array.isArray(project.selectedStages)
       ? (project.selectedStages as string[])
       : [];
 
     const selectedStageKeys: StageKey[] = rawStages
-      .map(normalizeKey)
+      .map((idOrName: string) => {
+        const resolvedName = stageIdToName.get(idOrName) ?? idOrName;
+        return normalizeKey(resolvedName);
+      })
       .filter((k): k is StageKey => k !== null);
 
-    // ── Block summaries ──────────────────────
+    // ── Block summaries ──
     const superStructureBlocks = project.hasSuperStructure
       ? buildBlockSummary(project.superStructures, project.SuperStructureProgress, "blockName")
       : [];
 
-    const totalSuperFloors     = superStructureBlocks.reduce((acc, b) => acc + b.totalFloors, 0);
-    const completedSuperFloors = superStructureBlocks.reduce((acc, b) => acc + b.completedFloors, 0);
+    const totalSuperFloors     = superStructureBlocks.reduce((acc: number, b: any) => acc + b.totalFloors, 0);
+    const completedSuperFloors = superStructureBlocks.reduce((acc: number, b: any) => acc + b.completedFloors, 0);
 
+    // FIX 1: interiors/exteriors use "block" field (can be null in DB)
     const interiorBlocks = project.hasSuperStructure
       ? buildBlockSummary(project.superStructures, project.interiorsProgress, "block")
       : [];
@@ -359,9 +399,7 @@ export const getAdminDashboardReportService = async ({
       ? buildBlockSummary(project.superStructures, project.exteriorsProgress, "block")
       : [];
 
-    // ── Build stages object ──────────────────
-    // Key   = exact stage name from DB  (e.g. "Foundation Stage")
-    // Value = { name, started, completed, status, ...detail }
+    // ── Build stages object ──
     const stages: Record<string, any> = {};
 
     for (const stageKey of selectedStageKeys) {
@@ -373,7 +411,7 @@ export const getAdminDashboardReportService = async ({
       );
 
       stages[stageKey] = {
-        name:   stageKey,          // human-readable name always present
+        name: stageKey,
         started,
         completed,
         status:
@@ -384,22 +422,24 @@ export const getAdminDashboardReportService = async ({
       };
     }
 
-    // ── Stage summary counts ─────────────────
+    // ── Stage summary counts ──
     const selectedStageCount  = selectedStageKeys.length;
-    const completedStageNames = selectedStageKeys.filter((k) => stages[k]?.completed);
+    const completedStageNames = selectedStageKeys.filter((k: StageKey) => stages[k]?.completed);
     const completedStages     = completedStageNames.length;
     const pendingStages       = selectedStageCount - completedStages;
 
-    // ── Current active stage (deepest started) ─
-    const reverseOrder = [...ALL_STAGES].reverse().map((s) => s.key);
-    let currentStage   = "NOT_STARTED";
+    // ── Current active stage (deepest started) ──
+    const reverseOrder = [...ALL_STAGES].reverse().map(
+      (s: { key: string; label: string }) => s.key as StageKey
+    );
+    let currentStage = "NOT_STARTED";
 
     for (const key of reverseOrder) {
       if (!selectedStageKeys.includes(key)) continue;
       if (stages[key]?.started) { currentStage = key; break; }
     }
 
-    // ── Overall status ───────────────────────
+    // ── Overall status ──
     const hasAnyActivity =
       project.landSiteInspection.length > 0         ||
       project.preConstructionInspections.length > 0  ||
@@ -419,21 +459,20 @@ export const getAdminDashboardReportService = async ({
     if      (allCompleted)   overallStatus = "CompletedProjects";
     else if (hasAnyActivity) overallStatus = "OngoingProjects";
 
-    // ── Access ───────────────────────────────
     const { districtAccess, specialUnitAccess } = buildAccessInfo(project);
 
     return {
-      id:               project.id,
-      code:             project.code,
-      projectName:      project.projectName,
-      buildingType:     project.buildingType,
-      location:         project.location ?? null,
-      departmentId:     project.departmentId,
-      departmentName:   project.department?.name ?? null,
-      jurisdictionType: project.jurisdictionType,
-      accessType:       project.accessType ?? null,
+      id:                project.id,
+      code:              project.code,
+      projectName:       project.projectName,
+      buildingType:      project.buildingType,
+      location:          project.location ?? null,
+      departmentId:      project.departmentId,
+      departmentName:    project.department?.name ?? null,
+      jurisdictionType:  project.jurisdictionType,
+      accessType:        project.accessType ?? null,
       hasSuperStructure: project.hasSuperStructure,
-      status:           overallStatus,
+      status:            overallStatus,
       currentStage,
 
       districtAccess,
@@ -441,12 +480,17 @@ export const getAdminDashboardReportService = async ({
 
       selectedStageCount,
       completedStages,
-      completedStageNames,   // array of exact stage name strings
+      completedStageNames,
       pendingStages,
 
-      stages,                // keyed by exact stage name, each has { name, status, started, completed, ...detail }
+      stages,
 
-      superStructure: superStructureBlocks,   // top-level for list cards
+      // FIX 2: top-level superStructure no longer duplicates — just block metadata
+      superStructure: project.superStructures.map((b: any) => ({
+        blockName:   b.blockName,
+        totalFloors: b.totalFloors ?? 0,
+        floors:      b.floors ?? [],
+      })),
 
       createdBy: project.createdByUser
         ? {
@@ -457,7 +501,7 @@ export const getAdminDashboardReportService = async ({
           }
         : null,
 
-      recentHistory: project.projectHistories.map((h) => ({
+      recentHistory: project.projectHistories.map((h: any) => ({
         action:      h.action,
         remarks:     h.remarks,
         changedById: h.changedById,
@@ -474,9 +518,9 @@ export const getAdminDashboardReportService = async ({
   // ─────────────────────────────────────────────
   const summary = {
     totalProjects:     totalRecords,
-    completedProjects: formattedProjects.filter((p) => p.status === "CompletedProjects").length,
-    ongoingProjects:   formattedProjects.filter((p) => p.status === "OngoingProjects").length,
-    assignedProjects:  formattedProjects.filter((p) => p.status === "AssignedProjects").length,
+    completedProjects: formattedProjects.filter((p: any) => p.status === "CompletedProjects").length,
+    ongoingProjects:   formattedProjects.filter((p: any) => p.status === "OngoingProjects").length,
+    assignedProjects:  formattedProjects.filter((p: any) => p.status === "AssignedProjects").length,
   };
 
   return {
