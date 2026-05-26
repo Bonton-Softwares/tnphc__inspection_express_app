@@ -655,6 +655,13 @@ export const getProjectsByUserService = async ({
     pageSize: limit,
   } = pageConfig({ pageNumber, pageSize });
 
+  // ── Fetch all active stages for name lookup ─────────────────
+  const allStages = await prisma.stage.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  });
+  const stageMap = new Map(allStages.map((s) => [s.id, s.name]));
+
   const where: any = {
     isActive: true,
   };
@@ -814,11 +821,15 @@ export const getProjectsByUserService = async ({
         (m) => !m.specialUnitId
       );
 
-    const selectedStageCount = Array.isArray(
-      p.selectedStages
-    )
+    const selectedStageCount = Array.isArray(p.selectedStages)
       ? (p.selectedStages as string[]).length
       : 0;
+
+    const selectedStageNames = Array.isArray(p.selectedStages)
+      ? (p.selectedStages as string[])
+          .map((id) => stageMap.get(id) ?? null)
+          .filter(Boolean) as string[]
+      : [];
 
     const completedStageNames =
       getCompletedStageNames(p);
@@ -884,6 +895,7 @@ export const getProjectsByUserService = async ({
           : null,
 
       selectedStageCount,
+      selectedStageNames,
       completedStages,
       completedStageNames,
       pendingStages,
