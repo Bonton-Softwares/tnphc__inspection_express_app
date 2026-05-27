@@ -213,5 +213,8 @@ export const getProgressByProjectService = async (projectId: string) =>
 
 export const getQualityByProjectService = async (projectId: string) =>
   prisma.superStructureQuality.findFirst({
-    where: { projectId, isActive: true }
+    where: {
+      projectId,
+      isActive: true,
+    },
   });
