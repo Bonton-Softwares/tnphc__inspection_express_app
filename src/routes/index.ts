@@ -28,6 +28,7 @@ import adminReportsRoute
 from "../modules/adminReports/adminReports.route";
 import masterDropdownRoutes from "../modules/masterDropdown/masterDropdown.routes";
 import dropdownRoutes from "../modules/dropdown/dropdown.route";
+import pdfRoutes from "../modules/pdf/pdf.routes";
 
 
 const router = Router();
@@ -61,6 +62,11 @@ router.use("/superstructure",baseAuth,superStructureProgressRoutes);
 router.use(
   "/admin-reports",
   adminReportsRoute
+);
+
+router.use(
+  "/pdf",
+  pdfRoutes
 );
 
 
