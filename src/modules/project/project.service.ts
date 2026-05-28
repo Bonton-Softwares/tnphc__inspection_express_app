@@ -805,16 +805,25 @@ export const getProjectsByUserService = async ({
         foundationProgresses: { where: { isActive: true } },
         foundationQualityChecks: { where: { isActive: true } },
         plinthStages: { where: { isActive: true } },
-        interiorsProgress: { where: { isActive: true } },
-        interiorsQuality: true,
-        exteriorsProgress: { where: { isActive: true } },
-        exteriorsQuality: true,
+        // ── FIX: nest quality inside interiorsProgress ────────
+        interiorsProgress: {
+          where: { isActive: true },
+          include: { quality: true },
+        },
+        // ── FIX: nest quality inside exteriorsProgress ────────
+        exteriorsProgress: {
+          where: { isActive: true },
+          include: { quality: true },
+        },
         BuildingInspection: { where: { isActive: true } },
         DevelopmentWork: { where: { isActive: true } },
         TakeoverBuildingInsepction: { where: { isActive: true } },
         TakeoverDevelopmentWork: { where: { isActive: true } },
-        SuperStructureProgress: { where: { isActive: true } },
-        superStructureQuality: true,
+        // ── FIX: nest quality inside SuperStructureProgress ───
+        SuperStructureProgress: {
+          where: { isActive: true },
+          include: { quality: true },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -841,21 +850,22 @@ export const getProjectsByUserService = async ({
     if (p.plinthStages.length > 0)
       done.push("Plinth");
 
+    // ── FIX: check nested .quality instead of top-level field ─
     if (
       p.SuperStructureProgress.length > 0 ||
-      p.superStructureQuality
+      p.SuperStructureProgress.some((sp) => sp.quality)
     )
       done.push("Super Structure");
 
     if (
       p.interiorsProgress.length > 0 ||
-      p.interiorsQuality
+      p.interiorsProgress.some((ip) => ip.quality)
     )
       done.push("Interiors");
 
     if (
       p.exteriorsProgress.length > 0 ||
-      p.exteriorsQuality
+      p.exteriorsProgress.some((ep) => ep.quality)
     )
       done.push("Exteriors");
 
@@ -1022,16 +1032,25 @@ export const getProjectDashboardService = async (userId?: string) => {
       foundationProgresses: { where: { isActive: true } },
       foundationQualityChecks: { where: { isActive: true } },
       plinthStages: { where: { isActive: true } },
-      interiorsProgress: { where: { isActive: true } },
-      interiorsQuality: true,
-      exteriorsProgress: { where: { isActive: true } },
-      exteriorsQuality: true,
+      // ── FIX: nest quality inside interiorsProgress ────────
+      interiorsProgress: {
+        where: { isActive: true },
+        include: { quality: true },
+      },
+      // ── FIX: nest quality inside exteriorsProgress ────────
+      exteriorsProgress: {
+        where: { isActive: true },
+        include: { quality: true },
+      },
       BuildingInspection: { where: { isActive: true } },
       DevelopmentWork: { where: { isActive: true } },
       TakeoverBuildingInsepction: { where: { isActive: true } },
       TakeoverDevelopmentWork: { where: { isActive: true } },
-      SuperStructureProgress: { where: { isActive: true } },
-      superStructureQuality: true,
+      // ── FIX: nest quality inside SuperStructureProgress ───
+      SuperStructureProgress: {
+        where: { isActive: true },
+        include: { quality: true },
+      },
     },
   });
 
@@ -1052,9 +1071,10 @@ export const getProjectDashboardService = async (userId?: string) => {
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
-    if (p.SuperStructureProgress.length > 0 || p.superStructureQuality) done.push("Super Structure");
-    if (p.interiorsProgress.length > 0 || p.interiorsQuality) done.push("Interiors");
-    if (p.exteriorsProgress.length > 0 || p.exteriorsQuality) done.push("Exteriors");
+    // ── FIX: check nested .quality instead of top-level field ─
+    if (p.SuperStructureProgress.length > 0 || p.SuperStructureProgress.some((sp) => sp.quality)) done.push("Super Structure");
+    if (p.interiorsProgress.length > 0 || p.interiorsProgress.some((ip) => ip.quality)) done.push("Interiors");
+    if (p.exteriorsProgress.length > 0 || p.exteriorsProgress.some((ep) => ep.quality)) done.push("Exteriors");
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
     if (p.DevelopmentWork.length > 0) done.push("Development Work");
     if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
