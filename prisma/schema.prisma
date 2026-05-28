@@ -277,9 +277,9 @@ model project {
   foundationQualityChecks    FoundationQualityCheck[]
   plinthStages               PlinthStage[]
   interiorsProgress interiorsProgress[]
-interiorsQuality interiorsQuality?
+
   exteriorsProgress exteriorsProgress[]
-exteriorsQuality exteriorsQuality?
+
   BuildingInspection         BuildingInspection[]
   DevelopmentWork            DevelopmentWork[]
   TakeoverBuildingInsepction TakeoverBuildingInspection[]
@@ -289,7 +289,7 @@ exteriorsQuality exteriorsQuality?
     SuperStructureProgress superStructureProgress[]
 
   
-  superStructureQuality  superStructureQuality?
+ 
 }
 
 
@@ -822,23 +822,21 @@ model PlinthStage {
 }
 
 model interiorsProgress {
-  id        String @id @default(uuid())
-  projectId String
+id String @id @default(uuid())
+ projectId String 
+ blockId String 
+ floorId String 
+ stage String? 
 
-  project project @relation(fields: [projectId], references: [id])
-
-blockId String?
-block project_block? @relation(fields: [blockId], references: [id])
-
-floorId String?
-floor project_floor? @relation(fields: [floorId], references: [id])
- stageOfWork String?
-
-  isCompleted Boolean
+ 
 
   progressPhoto Json?
   progressRemarks String?
-
+  project project @relation(fields: [projectId], references: [id]) 
+  block project_block @relation(fields: [blockId], references: [id])
+   floor project_floor @relation(fields: [floorId], references: [id]) 
+  
+quality interiorsQuality?
   status interiorsStatus @default(NOT_STARTED)
 
   isActive Boolean @default(true)
@@ -848,10 +846,9 @@ floor project_floor? @relation(fields: [floorId], references: [id])
 }
 
 model interiorsQuality {
-  id        String @id @default(uuid())
-  projectId String @unique
-
-  project project @relation(fields: [projectId], references: [id])
+id String @id @default(uuid())
+ progressId String @unique
+  progress interiorsProgress @relation(fields: [progressId], references: [id])
 
   workStartedDate DateTime?
 
@@ -935,24 +932,24 @@ enum interiorsStatus {
 }
 
 model exteriorsProgress {
-  id        String @id @default(uuid())
-  projectId String
+ id String @id @default(uuid()) 
+ projectId String 
+ blockId String
+  floorId String 
+  stage String? 
+  
+remarks String?
+ status exteriorsStatus @default(NOT_STARTED)
 
-  project project @relation(fields: [projectId], references: [id])
-
-blockId String?
-block project_block? @relation(fields: [blockId], references: [id])
-
-floorId String?
-floor project_floor? @relation(fields: [floorId], references: [id])
-  stageOfWork String?
-
-  isCompleted Boolean
+  
 
   progressPhoto Json?
-  progressRemarks String?
-
-  status exteriorsStatus @default(NOT_STARTED)
+  
+project project @relation(fields: [projectId], references: [id])
+ block project_block @relation(fields: [blockId], references: [id]) 
+ floor project_floor @relation(fields: [floorId], references: [id]) 
+ quality exteriorsQuality?
+  
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -960,10 +957,9 @@ floor project_floor? @relation(fields: [floorId], references: [id])
 }
 
 model exteriorsQuality {
-  id        String @id @default(uuid())
-  projectId String @unique
-
-  project project @relation(fields: [projectId], references: [id])
+ id String @id @default(uuid())
+  progressId String @unique 
+  progress exteriorsProgress @relation(fields: [progressId], references: [id])
 
   workStartedDate DateTime?
 
@@ -1246,33 +1242,46 @@ model project_floor {
 }
 
 model superStructureProgress {
-  id        String @id @default(uuid())
+
+  id String @id @default(uuid())
+
   projectId String
-  project project @relation(fields: [projectId], references: [id])
 
-blockId String?
-block project_block? @relation(fields: [blockId], references: [id])
+  blockId String
 
-floorId String?
-floor project_floor? @relation(fields: [floorId], references: [id])
+  floorId String
 
   stage String?
-  photo Json?
 
-  status superStructureStatus @default(NOT_STARTED)
+  remarks String?
+
+  status superStructureStatus@default(NOT_STARTED)
+
+  photo Json?
 
   isActive Boolean @default(true)
 
+  createdById String?
+
+  updatedById String?
+
   createdAt DateTime @default(now())
+
   updatedAt DateTime @updatedAt
 
-  
+  project project@relation(fields: [projectId], references: [id])
+
+  block project_block@relation(fields: [blockId], references: [id])
+
+  floor project_floor@relation(fields: [floorId], references: [id])
+  quality superStructureQuality?
 }
 
 model superStructureQuality {
   id        String @id @default(uuid())
-  projectId String @unique
-  project project @relation(fields: [projectId], references: [id])
+    progressId String @unique
+
+  progress superStructureProgress @relation(fields: [progressId], references: [id])
 
   workStartedDate DateTime?
 
