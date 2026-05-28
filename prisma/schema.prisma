@@ -251,7 +251,8 @@ model project {
 
   projectAccessMappings project_access_mapping[]
 
-  superStructures superStructure[]
+  blocks project_block[]
+  floors project_floor[]
 
   projectHistories      project_history[]
 
@@ -826,9 +827,12 @@ model interiorsProgress {
 
   project project @relation(fields: [projectId], references: [id])
 
-  block String?
-  floor String?
-  stageOfWork String?
+blockId String?
+block project_block? @relation(fields: [blockId], references: [id])
+
+floorId String?
+floor project_floor? @relation(fields: [floorId], references: [id])
+ stageOfWork String?
 
   isCompleted Boolean
 
@@ -936,8 +940,11 @@ model exteriorsProgress {
 
   project project @relation(fields: [projectId], references: [id])
 
-  block String?
-  floor String?
+blockId String?
+block project_block? @relation(fields: [blockId], references: [id])
+
+floorId String?
+floor project_floor? @relation(fields: [floorId], references: [id])
   stageOfWork String?
 
   isCompleted Boolean
@@ -1188,50 +1195,54 @@ model project_history {
 
 
 
-model superStructure {
-  id        String @id @default(uuid()) @db.VarChar(36)
+model project_block {
 
-  projectId String @db.VarChar(36)
+  id String @id @default(uuid())
 
-  project   project@relation(fields: [projectId], references: [id])
+  projectId String
 
-  stageId   String? @db.VarChar(36)
+  project project @relation(fields: [projectId], references: [id])
 
- 
+  blockName String
 
-  blockName String @db.VarChar(255)
+  totalFloors Int
 
-  
+  createdAt DateTime @default(now())
 
-  totalFloors Int?
+  updatedAt DateTime @updatedAt
 
- 
+  floors project_floor[]
 
-  floors Json?
+  superStructureProgresses superStructureProgress[]
 
+  interiorsProgresses interiorsProgress[]
 
-
-  isSuperStructure Boolean @default(false)
-
-  description String? @db.Text
-
- 
-
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  createdById String?  @map("created_by")
-
-  updatedById String?  @map("updated_by")
-
-  isActive    Boolean  @default(true) @map("is_active")
-
-  
+  exteriorsProgresses exteriorsProgress[]
 
   @@unique([projectId, blockName])
+}
 
-  @@map("super_structures")
+
+model project_floor {
+  id          String   @id @default(uuid())
+
+  projectId   String
+  project     project  @relation(fields: [projectId], references: [id])
+
+  blockId     String
+  block       project_block @relation(fields: [blockId], references: [id])
+
+  floorName   String
+  floorNumber Int
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  superStructureProgress superStructureProgress[]
+  interiorsProgress      interiorsProgress[]
+  exteriorsProgress      exteriorsProgress[]
+
+  @@unique([blockId, floorName])
 }
 
 model superStructureProgress {
@@ -1239,8 +1250,11 @@ model superStructureProgress {
   projectId String
   project project @relation(fields: [projectId], references: [id])
 
-  blockName String?
-  floorName String?
+blockId String?
+block project_block? @relation(fields: [blockId], references: [id])
+
+floorId String?
+floor project_floor? @relation(fields: [floorId], references: [id])
 
   stage String?
   photo Json?
