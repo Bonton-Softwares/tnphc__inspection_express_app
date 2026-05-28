@@ -7,7 +7,7 @@ import {
   updateInteriorsQualityUsecase,
   deleteInteriorsProgressUsecase,
   getInteriorsProgressByProjectUsecase,
-  getInteriorsQualityByProjectUsecase
+  getInteriorsQualityByProgressUsecase
 } from "./InteriorsStage.usecase";
 
 const getSingleValue = (val: any): string =>
@@ -59,6 +59,8 @@ export const updateInteriorsProgressController = async (
 };
 
 // ─── CREATE QUALITY ────────────────────────────────────────────────
+// Quality is tied to a specific progress record via progressId in the body.
+// If quality already exists for that progressId, it will be updated (upsert).
 export const createInteriorsQualityController = async (
   req: Request,
   res: Response
@@ -74,6 +76,8 @@ export const createInteriorsQualityController = async (
 };
 
 // ─── UPDATE QUALITY ────────────────────────────────────────────────
+// Same upsert behaviour as create — idempotent by progressId.
+// Used when the form is reopened to edit existing quality data.
 export const updateInteriorsQualityController = async (
   req: Request,
   res: Response
@@ -88,7 +92,7 @@ export const updateInteriorsQualityController = async (
   }
 };
 
-// ─── DELETE ────────────────────────────────────────────────────────
+// ─── DELETE PROGRESS ───────────────────────────────────────────────
 export const deleteInteriorsProgressController = async (
   req: Request,
   res: Response
@@ -102,7 +106,7 @@ export const deleteInteriorsProgressController = async (
   }
 };
 
-// ─── GET PROGRESS ──────────────────────────────────────────────────
+// ─── GET PROGRESS BY PROJECT ───────────────────────────────────────
 export const getInteriorsProgressByProjectController = async (
   req: Request,
   res: Response
@@ -116,14 +120,15 @@ export const getInteriorsProgressByProjectController = async (
   }
 };
 
-// ─── GET QUALITY ───────────────────────────────────────────────────
-export const getInteriorsQualityByProjectController = async (
+// ─── GET QUALITY BY PROGRESS ────────────────────────────────────────
+// Fetch quality for a specific progress record (to pre-fill the form on edit).
+export const getInteriorsQualityByProgressController = async (
   req: Request,
   res: Response
 ) => {
   try {
-    const projectId = getSingleValue(req.params.projectId);
-    const data = await getInteriorsQualityByProjectUsecase(projectId);
+    const progressId = getSingleValue(req.params.progressId);
+    const data = await getInteriorsQualityByProgressUsecase(progressId);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });

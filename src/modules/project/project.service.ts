@@ -627,7 +627,30 @@ export const updateProjectService = async (
 
     // ── 10. Replace super-structure blocks & floors ───────────
     if (data.superStructure !== undefined) {
-      // Delete existing floors then blocks (order matters for FK)
+      // Must delete in FK dependency order:
+      // superStructureQuality → superStructureProgress → interiorsProgress/exteriorsProgress → project_floor → project_block
+
+      // 10a. Delete quality records that reference superStructureProgress rows for this project
+      await tx.superStructureQuality.deleteMany({
+        where: { progress: { projectId: id } },
+      });
+
+      // 10b. Delete interiorsQuality records that reference interiorsProgress rows for this project
+      await tx.interiorsQuality.deleteMany({
+        where: { progress: { projectId: id } },
+      });
+
+      // 10c. Delete exteriorsQuality records that reference exteriorsProgress rows for this project
+      await tx.exteriorsQuality.deleteMany({
+        where: { progress: { projectId: id } },
+      });
+
+      // 10d. Delete progress rows that reference floors for this project
+      await tx.superStructureProgress.deleteMany({ where: { projectId: id } });
+      await tx.interiorsProgress.deleteMany({ where: { projectId: id } });
+      await tx.exteriorsProgress.deleteMany({ where: { projectId: id } });
+
+      // 10e. Now safe to delete floors then blocks
       await tx.project_floor.deleteMany({ where: { projectId: id } });
       await tx.project_block.deleteMany({ where: { projectId: id } });
 
