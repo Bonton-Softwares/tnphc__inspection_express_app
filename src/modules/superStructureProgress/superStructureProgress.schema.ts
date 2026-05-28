@@ -9,9 +9,10 @@ const booleanField = Joi.boolean()
 // ─── PROGRESS ──────────────────────────────────────────────────────
 export const createProgressSchema = Joi.object({
   projectId: Joi.string().uuid().required(),
-  blockName: Joi.string().optional().allow(null, ""),
-  floorName: Joi.string().optional().allow(null, ""),
+  blockId:   Joi.string().uuid().required(),
+  floorId:   Joi.string().uuid().required(),
   stage:     Joi.string().optional().allow("", null),
+  remarks:   Joi.string().optional().allow("", null),
   status:    Joi.string()
                .valid("NOT_STARTED", "IN_PROGRESS", "COMPLETED")
                .optional()
@@ -19,17 +20,19 @@ export const createProgressSchema = Joi.object({
 
 export const updateProgressSchema = Joi.object({
   projectId: Joi.string().uuid().optional(),
-  blockName: Joi.string().optional().allow(null, ""),
-  floorName: Joi.string().optional().allow(null, ""),
+  blockId:   Joi.string().uuid().optional(),
+  floorId:   Joi.string().uuid().optional(),
   stage:     Joi.string().optional().allow("", null),
+  remarks:   Joi.string().optional().allow("", null),
   status:    Joi.string()
                .valid("NOT_STARTED", "IN_PROGRESS", "COMPLETED")
                .optional()
 });
 
 // ─── QUALITY ───────────────────────────────────────────────────────
+// Quality is per-progress (1-to-1 via progressId)
 export const createQualitySchema = Joi.object({
-  projectId: Joi.string().uuid().required(),
+  progressId: Joi.string().uuid().required(),
 
   workStartedDate:  Joi.date().optional().allow(null),
   isDelay:          booleanField,
@@ -103,6 +106,7 @@ export const updateProgressParamSchema = Joi.object({
   id: Joi.string().uuid().required()
 });
 
+// Quality update param: by progressId
 export const updateQualityParamSchema = Joi.object({
-  projectId: Joi.string().uuid().required()
+  progressId: Joi.string().uuid().required()
 });

@@ -7,11 +7,8 @@ import {
   updateQualityUsecase,
   deleteProgressUsecase,
   getProgressByProjectUsecase,
-  getQualityByProjectUsecase
+  getQualityByProgressUsecase
 } from "./superStructureProgress.usecase";
-import {
-  generateSuperStructurePdf
-} from "./superStructurePdf.service";
 
 const getSingleValue = (val: any): string =>
   Array.isArray(val) ? val[0] : val;
@@ -58,11 +55,14 @@ export const updateProgressController = async (
 };
 
 // ─── CREATE QUALITY ────────────────────────────────────────────────
-export const createQualityController = async (
-  req: Request,
-  res: Response
-) => {
+// Quality is tied to a specific progress record via progressId in the body.
+// If quality already exists for that progressId, it will be updated (upsert).
+export const createQualityController = async (req: Request, res: Response) => {
   try {
+    // 👇 Add this temporarily to debug
+    console.log("FILES RECEIVED:", JSON.stringify(Object.keys(req.files || {})));
+    console.log("FILE COUNT:", Object.values(req.files || {}).flat().length);
+
     const data = await createQualityUsecase(req.body, req.files, req);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
@@ -71,6 +71,8 @@ export const createQualityController = async (
 };
 
 // ─── UPDATE QUALITY ────────────────────────────────────────────────
+// Same endpoint behaviour as create — upserts by progressId.
+// Used when the form is reopened to edit existing quality data.
 export const updateQualityController = async (
   req: Request,
   res: Response
@@ -111,46 +113,17 @@ export const getProgressByProjectController = async (
   }
 };
 
-// ─── GET QUALITY BY PROJECT ────────────────────────────────────────
-export const getQualityByProjectController = async (
+// ─── GET QUALITY BY PROGRESS ────────────────────────────────────────
+// Fetch quality for a specific progress record (to pre-fill the form on edit).
+export const getQualityByProgressController = async (
   req: Request,
   res: Response
 ) => {
   try {
-    const projectId = getSingleValue(req.params.projectId);
-    const data = await getQualityByProjectUsecase(projectId);
+    const progressId = getSingleValue(req.params.progressId);
+    const data = await getQualityByProgressUsecase(progressId);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });
   }
 };
-
-export const downloadSuperStructurePdfController =
-  async (
-    req: Request,
-    res: Response
-  ) => {
-
-    try {
-
-      const projectId =
-        getSingleValue(req.params.projectId);
-
-      const pdf =
-        await generateSuperStructurePdf(
-          projectId
-        );
-
-      return res.status(200).json({
-        success: true,
-        downloadUrl: pdf.url
-      });
-
-    } catch (e: any) {
-
-      return res.status(500).json({
-        success: false,
-        message: e.message
-      });
-    }
-  };

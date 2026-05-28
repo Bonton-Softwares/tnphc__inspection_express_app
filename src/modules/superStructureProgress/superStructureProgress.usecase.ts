@@ -4,7 +4,7 @@ import {
   deleteProgressDB,
   upsertQualityDB,
   getProgressByProjectService,
-  getQualityByProjectService
+  getQualityByProgressService
 } from "./superStructureProgress.service";
 
 const extractMeta = (req: any) => ({
@@ -34,10 +34,11 @@ export const createProgressUsecase = async (
   return upsertProgressDB(
     {
       projectId: body.projectId,
-      blockName: body.blockName ?? null,
-      floorName: body.floorName ?? null,
-      stage:     body.stage,
-      photo,
+      blockId:   body.blockId,
+      floorId:   body.floorId,
+      stage:     body.stage ?? null,
+      remarks:   body.remarks ?? null,
+      photo:     photo.length ? photo : undefined,
       status:    body.status ?? "IN_PROGRESS"
     },
     extractMeta(req)
@@ -62,9 +63,10 @@ export const updateProgressUsecase = async (
     {
       id,
       projectId: body.projectId,
-      blockName: body.blockName ?? null,
-      floorName: body.floorName ?? null,
-      stage:     body.stage,
+      blockId:   body.blockId,
+      floorId:   body.floorId,
+      stage:     body.stage ?? null,
+      remarks:   body.remarks ?? null,
       ...(photo.length ? { photo } : {}), // only overwrite photo if new one sent
       status:    body.status ?? "IN_PROGRESS"
     },
@@ -76,7 +78,8 @@ export const updateProgressUsecase = async (
 export const deleteProgressUsecase = async (id: string, req: any) =>
   deleteProgressDB(id, extractMeta(req));
 
-// ─── QUALITY CREATE / UPDATE ───────────────────────────────────────
+// ─── QUALITY BUILD PAYLOAD ─────────────────────────────────────────
+// Quality is linked to a specific progress record via progressId.
 const buildQualityPayload = (body: any, files: any, req: any) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const getFiles = (key: string) =>
@@ -86,55 +89,56 @@ const buildQualityPayload = (body: any, files: any, req: any) => {
     }));
 
   return {
-    projectId:       body.projectId,
+    progressId:      body.progressId,
+
     workStartedDate: body.workStartedDate ? new Date(body.workStartedDate) : null,
     isDelay:         body.isDelay === "true" || body.isDelay === true,
     delayDays:       body.delayDays ? Number(body.delayDays) : null,
-    delayReason:     body.delayReason,
-    delayOtherReason: body.delayOtherReason,
-    generalRemarks:  body.generalRemarks,
+    delayReason:     body.delayReason ?? null,
+    delayOtherReason: body.delayOtherReason ?? null,
+    generalRemarks:  body.generalRemarks ?? null,
 
-    cementGradeId: body.cementGradeId,
-    cementBrandId: body.cementBrandId,
-    cementRemarks: body.cementRemarks,
-    cementLabTest: body.cementLabTest,
+    cementGradeId: body.cementGradeId ?? null,
+    cementBrandId: body.cementBrandId ?? null,
+    cementRemarks: body.cementRemarks ?? null,
+    cementLabTest: body.cementLabTest ?? null,
     cementPhoto:   getFiles("cementPhoto"),
 
-    sandType:         body.sandType,
-    sandLabTest:      body.sandLabTest,
-    sandPhoto:        getFiles("sandPhoto"),
+    sandType:          body.sandType ?? null,
+    sandLabTest:       body.sandLabTest ?? null,
+    sandPhoto:         getFiles("sandPhoto"),
     sandSieveTestDone: body.sandSieveTestDone === "true" || body.sandSieveTestDone === true,
-    sandSieveLabTest: body.sandSieveLabTest,
-    sandSievePhoto:   getFiles("sandSievePhoto"),
+    sandSieveLabTest:  body.sandSieveLabTest ?? null,
+    sandSievePhoto:    getFiles("sandSievePhoto"),
 
-    steelGradeId: body.steelGradeId,
-    steelBrandId: body.steelBrandId,
-    steelLabTest: body.steelLabTest,
+    steelGradeId: body.steelGradeId ?? null,
+    steelBrandId: body.steelBrandId ?? null,
+    steelLabTest: body.steelLabTest ?? null,
     steelPhoto:   getFiles("steelPhoto"),
 
     aggregateSize:    body.aggregateSize ? Number(body.aggregateSize) : null,
-    aggregateLabTest: body.aggregateLabTest,
+    aggregateLabTest: body.aggregateLabTest ?? null,
     aggregatePhoto:   getFiles("aggregatePhoto"),
 
-    waterLabTest: body.waterLabTest,
+    waterLabTest: body.waterLabTest ?? null,
     waterPhoto:   getFiles("waterPhoto"),
 
-    concreteLabTest:         body.concreteLabTest,
+    concreteLabTest:         body.concreteLabTest ?? null,
     concretePhoto:           getFiles("concretePhoto"),
-    concreteQualityTestDone: body.concreteQualityTestDone === "true",
-    concreteQualityLabTest:  body.concreteQualityLabTest,
+    concreteQualityTestDone: body.concreteQualityTestDone === "true" || body.concreteQualityTestDone === true,
+    concreteQualityLabTest:  body.concreteQualityLabTest ?? null,
     concreteQualityPhoto:    getFiles("concreteQualityPhoto"),
 
-    bricksLabTest:             body.bricksLabTest,
+    bricksLabTest:             body.bricksLabTest ?? null,
     bricksPhoto:               getFiles("bricksPhoto"),
-    bricksQualityTestDone:     body.bricksQualityTestDone === "true",
-    bricksQualityLabTest:      body.bricksQualityLabTest,
+    bricksQualityTestDone:     body.bricksQualityTestDone === "true" || body.bricksQualityTestDone === true,
+    bricksQualityLabTest:      body.bricksQualityLabTest ?? null,
     bricksQualityPhoto:        getFiles("bricksQualityPhoto"),
     brickWallAlignmentDone:    body.brickWallAlignmentDone === "true" || body.brickWallAlignmentDone === true,
-    brickWallAlignmentRemarks: body.brickWallAlignmentRemarks,
+    brickWallAlignmentRemarks: body.brickWallAlignmentRemarks ?? null,
     brickWallAlignmentPhoto:   getFiles("brickWallAlignmentPhoto"),
 
-    qualityRemarks: body.qualityRemarks
+    qualityRemarks: body.qualityRemarks ?? null
   };
 };
 
@@ -144,11 +148,12 @@ export const createQualityUsecase = async (
   req:   any
 ) => upsertQualityDB(buildQualityPayload(body, files, req), extractMeta(req));
 
+// Update quality uses the same upsert logic (idempotent via progressId)
 export const updateQualityUsecase = createQualityUsecase;
 
 // ─── GET PROGRESS / QUALITY ────────────────────────────────────────
 export const getProgressByProjectUsecase = async (projectId: string) =>
   getProgressByProjectService(projectId);
 
-export const getQualityByProjectUsecase = async (projectId: string) =>
-  getQualityByProjectService(projectId);
+export const getQualityByProgressUsecase = async (progressId: string) =>
+  getQualityByProgressService(progressId);
