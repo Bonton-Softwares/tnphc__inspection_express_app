@@ -153,6 +153,45 @@ async function validateDistrictIds(tx: any, rule: AccessRule): Promise<void> {
   }
 }
 
+/**
+ * Creates project_block + project_floor rows for a project.
+ * Called inside a transaction.
+ */
+async function createBlocksAndFloors(
+  tx: any,
+  projectId: string,
+  blocks: SuperStructureBlock[]
+): Promise<void> {
+  for (const b of blocks) {
+    const block = await tx.project_block.create({
+      data: {
+        projectId,
+        blockName: b.blockName,
+        totalFloors: b.totalFloors,
+      },
+    });
+
+    await tx.project_floor.createMany({
+      data: b.floors.map((floorName, index) => ({
+        projectId,
+        blockId: block.id,
+        floorName,
+        floorNumber: index + 1,
+      })),
+    });
+  }
+}
+
+/**
+ * Deletes all project_block (and cascades to project_floor) for a project.
+ * Called inside a transaction before re-creating.
+ */
+async function deleteBlocksAndFloors(tx: any, projectId: string): Promise<void> {
+  // Delete floors first (FK constraint), then blocks
+  await tx.project_floor.deleteMany({ where: { projectId } });
+  await tx.project_block.deleteMany({ where: { projectId } });
+}
+
 // ─────────────────────────────────────────────────────────────
 // CREATE
 // ─────────────────────────────────────────────────────────────
@@ -210,16 +249,6 @@ export const createProjectService = async (data: CreateProjectInput) => {
     }
 
     // ── 6. Create project ─────────────────────────────────────
-    //
-    // jurisdictionType:
-    //   SPECIAL_UNIT → specialUnitId provided
-    //   DISTRICT     → district/city access
-    //
-    // accessType (stored on project):
-    //   Special unit  → always FULL_JURISDICTION (no district concept)
-    //   District SPECIFIC          → SPECIFIC
-    //   District FULL_JURISDICTION → FULL_JURISDICTION
-    //
     const project = await tx.project.create({
       data: {
         projectName: data.projectName,
@@ -245,18 +274,9 @@ export const createProjectService = async (data: CreateProjectInput) => {
 
     await tx.project_access_mapping.createMany({ data: accessRows });
 
-    // ── 8. Super-structure blocks ─────────────────────────────
+    // ── 8. Super-structure blocks & floors (relational tables) ─
     if (data.hasSuperStructure && data.superStructure?.length) {
-      await tx.superStructure.createMany({
-        data: data.superStructure.map((b) => ({
-          projectId: project.id,
-          blockName: b.blockName,
-          totalFloors: b.totalFloors,
-          floors: b.floors,
-          isSuperStructure: true,
-          createdById: data.createdById ?? null,
-        })),
-      });
+      await createBlocksAndFloors(tx, project.id, data.superStructure);
     }
 
     return project;
@@ -320,7 +340,14 @@ export const getAllProjectsService = async (query: {
           where: { isActive: true },
           include: { district: true, specialUnit: true },
         },
-        superStructures: { where: { isActive: true } },
+        // ── NEW: relational blocks & floors ──────────────────
+        blocks: {
+          include: {
+            floors: {
+              orderBy: { floorNumber: "asc" },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -345,8 +372,9 @@ export const getAllProjectsService = async (query: {
       accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
       status: p.status,
-      totalBlocks: p.superStructures.length,
-      totalFloors: p.superStructures.reduce((sum, b) => sum + (b.totalFloors ?? 0), 0),
+      // ── block/floor counts (same field names as before) ─────
+      totalBlocks: p.blocks.length,
+      totalFloors: p.blocks.reduce((sum, b) => sum + (b.totalFloors ?? 0), 0),
 
       // District/city access — only for DISTRICT projects
       districtAccess: isSpecialUnit
@@ -370,6 +398,18 @@ export const getAllProjectsService = async (query: {
           }
         : null,
 
+      // ── NEW: block & floor details with IDs ─────────────────
+      superStructure: p.blocks.map((b) => ({
+        blockId: b.id,
+        blockName: b.blockName,
+        totalFloors: b.totalFloors,
+        floors: b.floors.map((f) => ({
+          floorId: f.id,
+          floorName: f.floorName,
+          floorNumber: f.floorNumber,
+        })),
+      })),
+
       createdAt: p.createdAt,
     };
   });
@@ -390,7 +430,17 @@ export const getProjectByIdService = async (id: string) => {
         where: { isActive: true },
         include: { district: true, specialUnit: true },
       },
-      superStructures: { where: { isActive: true } },
+      // ── NEW: relational blocks & floors ──────────────────
+      blocks: {
+        include: {
+          floors: {
+            orderBy: { floorNumber: "asc" },
+          },
+          superStructureProgresses: {
+            where: { isActive: true },
+          },
+        },
+      },
       SuperStructureProgress: { where: { isActive: true } },
       projectHistories: { orderBy: { createdAt: "desc" }, take: 10 },
     },
@@ -418,8 +468,7 @@ export const getProjectByIdService = async (id: string) => {
       ? { id: project.department.id, name: project.department.name }
       : null,
 
-    // Only for DISTRICT projects — includes accessType (SPECIFIC / FULL_JURISDICTION)
-    // and the selected districts (empty array when FULL_JURISDICTION)
+    // Only for DISTRICT projects
     districtAccess: isSpecialUnit
       ? null
       : {
@@ -433,7 +482,7 @@ export const getProjectByIdService = async (id: string) => {
             })),
         },
 
-    // Only for SPECIAL_UNIT projects — no accessType, no districts
+    // Only for SPECIAL_UNIT projects
     specialUnitAccess: isSpecialUnit && specialUnitMapping
       ? {
           specialUnitId: specialUnitMapping.specialUnitId ?? null,
@@ -441,19 +490,28 @@ export const getProjectByIdService = async (id: string) => {
         }
       : null,
 
-    blocks: project.superStructures.map((b) => {
-      const progress = project.SuperStructureProgress.filter(
-        (sp) => sp.blockName === b.blockName
-      );
+    // ── NEW: block & floor details with IDs + progress ───────
+    blocks: project.blocks.map((b) => {
+      const completedFloors = b.superStructureProgresses.filter(
+        (sp) => sp.status === "COMPLETED"
+      ).length;
+
       return {
+        blockId: b.id,
         blockName: b.blockName,
         totalFloors: b.totalFloors,
-        floors: b.floors ?? [],
-        completedFloors: progress.filter((sp) => sp.status === "COMPLETED").length,
-        floorProgress: progress.map((sp) => ({
-          floorName: sp.floorName,
-          status: sp.status,
-        })),
+        completedFloors,
+        floors: b.floors.map((f) => {
+          const floorProgress = b.superStructureProgresses.find(
+            (sp) => sp.floorId === f.id
+          );
+          return {
+            floorId: f.id,
+            floorName: f.floorName,
+            floorNumber: f.floorNumber,
+            status: floorProgress?.status ?? "NOT_STARTED",
+          };
+        }),
       };
     }),
 
@@ -487,8 +545,6 @@ export const updateProjectService = async (
     }
 
     // Resolve whether the resulting project is special-unit or district.
-    // • If specialUnitId is explicitly sent → use it (truthy = special unit, null/empty = district)
-    // • If specialUnitId is NOT in the payload → inherit from existing record
     const isSpecialUnit =
       data.specialUnitId !== undefined
         ? !!data.specialUnitId
@@ -536,7 +592,6 @@ export const updateProjectService = async (
     }
 
     if (isSpecialUnit) {
-      // Special-unit projects always store FULL_JURISDICTION
       updatePayload.accessType = "FULL_JURISDICTION";
     } else if (data.districtAccess?.accessType !== undefined) {
       updatePayload.accessType = data.districtAccess.accessType;
@@ -570,22 +625,14 @@ export const updateProjectService = async (
       }
     }
 
-    // ── 10. Replace super-structures ──────────────────────────
+    // ── 10. Replace super-structure blocks & floors ───────────
     if (data.superStructure !== undefined) {
-      await tx.superStructure.deleteMany({ where: { projectId: id } });
+      // Delete existing floors then blocks (order matters for FK)
+      await tx.project_floor.deleteMany({ where: { projectId: id } });
+      await tx.project_block.deleteMany({ where: { projectId: id } });
 
       if (data.hasSuperStructure && data.superStructure.length > 0) {
-        await tx.superStructure.createMany({
-          data: data.superStructure.map((b) => ({
-            projectId: id,
-            blockName: b.blockName,
-            totalFloors: b.totalFloors,
-            floors: b.floors,
-            isSuperStructure: true,
-            createdById: data.updatedById ?? null,
-            updatedById: data.updatedById ?? null,
-          })),
-        });
+        await createBlocksAndFloors(tx, id, data.superStructure);
       }
     }
 
@@ -610,7 +657,13 @@ export const updateProjectService = async (
           where: { isActive: true },
           include: { district: true, specialUnit: true },
         },
-        superStructures: { where: { isActive: true } },
+        blocks: {
+          include: {
+            floors: {
+              orderBy: { floorNumber: "asc" },
+            },
+          },
+        },
       },
     });
   });
@@ -626,8 +679,12 @@ export const deleteProjectService = async (id: string) => {
     if (!existing || !existing.isActive) throw new Error("Project not found");
 
     await tx.project.update({ where: { id }, data: { isActive: false } });
-    await tx.superStructure.updateMany({ where: { projectId: id }, data: { isActive: false } });
     await tx.project_access_mapping.updateMany({ where: { projectId: id }, data: { isActive: false } });
+    // Note: project_block and project_floor do not have isActive — hard delete is fine,
+    // or leave them as-is since the project itself is soft-deleted.
+    // If you want to physically remove them on soft delete, uncomment below:
+    // await tx.project_floor.deleteMany({ where: { projectId: id } });
+    // await tx.project_block.deleteMany({ where: { projectId: id } });
 
     return { message: "Project deleted successfully" };
   });
@@ -732,7 +789,17 @@ export const getProjectsByUserService = async ({
           where: { isActive: true },
           include: { district: true, specialUnit: true },
         },
-        superStructures: { where: { isActive: true } },
+        // ── NEW: relational blocks & floors ──────────────────
+        blocks: {
+          include: {
+            floors: {
+              orderBy: { floorNumber: "asc" },
+            },
+            superStructureProgresses: {
+              where: { isActive: true },
+            },
+          },
+        },
         landSiteInspection: { where: { isActive: true } },
         preConstructionInspections: { where: { isActive: true } },
         foundationProgresses: { where: { isActive: true } },
@@ -900,19 +967,30 @@ export const getProjectsByUserService = async ({
       completedStageNames,
       pendingStages,
 
-      superStructure: p.superStructures.map(
-        (b) => ({
+      // ── NEW: block & floor details with IDs + progress ─────
+      superStructure: p.blocks.map((b) => {
+        const completedFloors = b.superStructureProgresses.filter(
+          (sp) => sp.status === "COMPLETED"
+        ).length;
+
+        return {
+          blockId: b.id,
           blockName: b.blockName,
           totalFloors: b.totalFloors,
-          floors: b.floors ?? [],
-          completedFloors:
-            p.SuperStructureProgress.filter(
-              (sp) =>
-                sp.blockName === b.blockName &&
-                sp.status === "COMPLETED"
-            ).length,
-        })
-      ),
+          completedFloors,
+          floors: b.floors.map((f) => {
+            const floorProgress = b.superStructureProgresses.find(
+              (sp) => sp.floorId === f.id
+            );
+            return {
+              floorId: f.id,
+              floorName: f.floorName,
+              floorNumber: f.floorNumber,
+              status: floorProgress?.status ?? "NOT_STARTED",
+            };
+          }),
+        };
+      }),
 
       status: projectStatus,
       createdAt: p.createdAt,
