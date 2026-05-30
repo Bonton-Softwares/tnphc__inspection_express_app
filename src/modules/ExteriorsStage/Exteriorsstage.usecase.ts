@@ -3,7 +3,7 @@ import {
   upsertExteriorsProgressDB,
   upsertExteriorsQualityDB,
   getExteriorsProgressByProjectService,
-  getExteriorsQualityByProjectService,
+  getExteriorsQualityByProgressService,
   deleteExteriorsProgressDB
 } from "./Exteriorsstage.service";
 
@@ -30,19 +30,15 @@ export const createExteriorsProgressUsecase = async (
     url:      `${baseUrl}/uploads/${f.filename}`
   }));
 
-  const isCompleted =
-    body.isCompleted === "true" || body.isCompleted === true;
-
   return upsertExteriorsProgressDB(
     {
-      projectId:       body.projectId,
-      block:           body.block       ?? null,
-      floor:           body.floor       ?? null,
-      stageOfWork:     body.stageOfWork ?? null,
-      isCompleted,
-      progressRemarks: body.progressRemarks,
-      progressPhoto,
-      status:          isCompleted ? "COMPLETED" : "IN_PROGRESS"
+      projectId:    body.projectId,
+      blockId:      body.blockId,
+      floorId:      body.floorId,
+      stage:        body.stage    ?? null,
+      remarks:      body.remarks  ?? null,
+      progressPhoto: progressPhoto.length ? progressPhoto : undefined,
+      status:       body.status   ?? "IN_PROGRESS"
     },
     extractMeta(req)
   );
@@ -62,20 +58,16 @@ export const updateExteriorsProgressUsecase = async (
     url:      `${baseUrl}/uploads/${f.filename}`
   }));
 
-  const isCompleted =
-    body.isCompleted === "true" || body.isCompleted === true;
-
   return upsertExteriorsProgressDB(
     {
       id,
-      projectId:       body.projectId,
-      block:           body.block       ?? null,
-      floor:           body.floor       ?? null,
-      stageOfWork:     body.stageOfWork ?? null,
-      isCompleted,
-      progressRemarks: body.progressRemarks,
-      ...(progressPhoto.length ? { progressPhoto } : {}),
-      status:          isCompleted ? "COMPLETED" : "IN_PROGRESS"
+      projectId:    body.projectId,
+      blockId:      body.blockId,
+      floorId:      body.floorId,
+      stage:        body.stage   ?? null,
+      remarks:      body.remarks ?? null,
+      ...(progressPhoto.length ? { progressPhoto } : {}), // only overwrite if new photo sent
+      status:       body.status  ?? "IN_PROGRESS"
     },
     extractMeta(req)
   );
@@ -87,7 +79,8 @@ export const deleteExteriorsProgressUsecase = async (
   req: any
 ) => deleteExteriorsProgressDB(id, extractMeta(req));
 
-// ─── QUALITY (shared builder) ──────────────────────────────────────
+// ─── QUALITY BUILD PAYLOAD ─────────────────────────────────────────
+// Quality is linked to a specific progress record via progressId.
 const buildQualityPayload = (body: any, files: any, req: any) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   const getFiles = (key: string) =>
@@ -97,72 +90,85 @@ const buildQualityPayload = (body: any, files: any, req: any) => {
     }));
 
   return {
-    projectId:       body.projectId,
+    progressId:      body.progressId,
+
     workStartedDate: body.workStartedDate ? new Date(body.workStartedDate) : null,
     isDelayed:       body.isDelayed === "true" || body.isDelayed === true,
     delayDays:       body.delayDays ? Number(body.delayDays) : null,
-    delayReason:     body.delayReason,
-    delayOther:      body.delayOther,
-    generalRemarks:  body.generalRemarks,
+    delayReason:     body.delayReason  ?? null,
+    delayOther:      body.delayOther   ?? null,
+    generalRemarks:  body.generalRemarks ?? null,
 
-    cementGradeId: body.cementGradeId,
-    cementBrandId: body.cementBrandId,
-    cementRemarks: body.cementRemarks,
-    cementLabTest: body.cementLabTest,
+    // CEMENT
+    cementGradeId: body.cementGradeId ?? null,
+    cementBrandId: body.cementBrandId ?? null,
+    cementRemarks: body.cementRemarks ?? null,
+    cementLabTest: body.cementLabTest ?? null,
     cementPhoto:   getFiles("cementPhoto"),
 
-    sandType:          body.sandType,
-    sandLabTest:       body.sandLabTest,
+    // SAND
+    sandType:          body.sandType          ?? null,
+    sandLabTest:       body.sandLabTest       ?? null,
     sandPhoto:         getFiles("sandPhoto"),
     sandSieveTestDone: body.sandSieveTestDone === "true" || body.sandSieveTestDone === true,
-    sandSieveLabTest:  body.sandSieveLabTest,
+    sandSieveLabTest:  body.sandSieveLabTest  ?? null,
     sandSievePhoto:    getFiles("sandSievePhoto"),
 
+    // AGGREGATE
     aggregateSize:    body.aggregateSize ? Number(body.aggregateSize) : null,
-    aggregateLabTest: body.aggregateLabTest,
+    aggregateLabTest: body.aggregateLabTest ?? null,
     aggregatePhoto:   getFiles("aggregatePhoto"),
 
-    waterLabTest: body.waterLabTest,
+    // WATER
+    waterLabTest: body.waterLabTest ?? null,
     waterPhoto:   getFiles("waterPhoto"),
 
-    concreteLabTest:         body.concreteLabTest,
+    // CONCRETE
+    concreteLabTest:         body.concreteLabTest         ?? null,
     concretePhoto:           getFiles("concretePhoto"),
     concreteQualityTestDone: body.concreteQualityTestDone === "true" || body.concreteQualityTestDone === true,
-    concreteQualityLabTest:  body.concreteQualityLabTest,
+    concreteQualityLabTest:  body.concreteQualityLabTest  ?? null,
     concreteQualityPhoto:    getFiles("concreteQualityPhoto"),
 
-    bricksLabTest:         body.bricksLabTest,
+    // BRICKS
+    bricksLabTest:         body.bricksLabTest         ?? null,
     bricksPhoto:           getFiles("bricksPhoto"),
     bricksQualityTestDone: body.bricksQualityTestDone === "true" || body.bricksQualityTestDone === true,
-    bricksQualityLabTest:  body.bricksQualityLabTest,
+    bricksQualityLabTest:  body.bricksQualityLabTest  ?? null,
     bricksQualityPhoto:    getFiles("bricksQualityPhoto"),
 
+    // PLASTERING
     plasteringTestDone: body.plasteringTestDone === "true" || body.plasteringTestDone === true,
-    plasteringLabTest:  body.plasteringLabTest,
+    plasteringLabTest:  body.plasteringLabTest ?? null,
     plasteringPhoto:    getFiles("plasteringPhoto"),
-    plasteringRemarks:  body.plasteringRemarks,
+    plasteringRemarks:  body.plasteringRemarks ?? null,
 
-    doorWindowType:    body.doorWindowType,
-    upvcBrand:         body.upvcBrand,
-    glassBrand:        body.glassBrand,
-    glassThickness:    body.glassThickness,
-    doorWindowRemarks: body.doorWindowRemarks,
+    // DOORS & WINDOWS
+    doorWindowType:    body.doorWindowType    ?? null,
+    upvcBrand:         body.upvcBrand         ?? null,
+    glassBrand:        body.glassBrand        ?? null,
+    glassThickness:    body.glassThickness    ?? null,
+    doorWindowRemarks: body.doorWindowRemarks ?? null,
 
-    interiorFloorType:   body.interiorFloorType,
-    interiorTileBrand:   body.interiorTileBrand,
-    interiorTileRemarks: body.interiorTileRemarks,
+    // INTERIOR TILES
+    interiorFloorType:   body.interiorFloorType   ?? null,
+    interiorTileBrand:   body.interiorTileBrand   ?? null,
+    interiorTileRemarks: body.interiorTileRemarks ?? null,
 
-    roofFloorType:   body.roofFloorType,
-    roofTileBrand:   body.roofTileBrand,
-    roofTileRemarks: body.roofTileRemarks,
+    // ROOF TILES
+    roofFloorType:   body.roofFloorType   ?? null,
+    roofTileBrand:   body.roofTileBrand   ?? null,
+    roofTileRemarks: body.roofTileRemarks ?? null,
 
-    interiorPaintBrand:      body.interiorPaintBrand,
-    interiorPaintingQuality: body.interiorPaintingQuality,
+    // INTERIOR PAINTING
+    interiorPaintBrand:      body.interiorPaintBrand      ?? null,
+    interiorPaintingQuality: body.interiorPaintingQuality ?? null,
 
-    exteriorPaintBrand:      body.exteriorPaintBrand,
-    exteriorPaintingQuality: body.exteriorPaintingQuality,
+    // EXTERIOR PAINTING
+    exteriorPaintBrand:      body.exteriorPaintBrand      ?? null,
+    exteriorPaintingQuality: body.exteriorPaintingQuality ?? null,
 
-    qualityRemarks: body.qualityRemarks
+    qualityRemarks: body.qualityRemarks ?? null
   };
 };
 
@@ -172,6 +178,7 @@ export const createExteriorsQualityUsecase = async (
   req:   any
 ) => upsertExteriorsQualityDB(buildQualityPayload(body, files, req), extractMeta(req));
 
+// Update quality uses the same upsert logic (idempotent via progressId)
 export const updateExteriorsQualityUsecase = createExteriorsQualityUsecase;
 
 // ─── GETS ──────────────────────────────────────────────────────────
@@ -179,6 +186,6 @@ export const getExteriorsProgressByProjectUsecase = async (
   projectId: string
 ) => getExteriorsProgressByProjectService(projectId);
 
-export const getExteriorsQualityByProjectUsecase = async (
-  projectId: string
-) => getExteriorsQualityByProjectService(projectId);
+export const getExteriorsQualityByProgressUsecase = async (
+  progressId: string
+) => getExteriorsQualityByProgressService(progressId);

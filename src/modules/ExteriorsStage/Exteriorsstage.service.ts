@@ -2,21 +2,31 @@ import prisma from "../../shared/prisma";
 import { logAudit } from "../../auditLogService";
 
 // ─── GET FULL VIEW ─────────────────────────────────────────────────
+// Returns project with blocks → floors → progress per floor + quality per progress.
+// Mirrors InteriorsStage exactly — exteriorsProgress uses blockId/floorId/status.
 export const getExteriorsFullViewService = async (
   projectId: string
 ) => {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      superStructures:    { where: { isActive: true } },
-      exteriorsProgress:  { where: { isActive: true } },
-      exteriorsQuality:   true
+      blocks: {
+        include: {
+          floors: {
+            orderBy: { floorNumber: "asc" }
+          }
+        }
+      },
+      exteriorsProgress: {
+        where:   { isActive: true },
+        include: { quality: true }
+      }
     }
   });
 
   if (!project) throw new Error("Project not found");
 
-  // ✅ No super structure — return stored progress as-is
+  // ── NON-SUPER-STRUCTURE PROJECT ────────────────────────────────
   if (!project.hasSuperStructure) {
     return {
       projectId:         project.id,
@@ -25,29 +35,57 @@ export const getExteriorsFullViewService = async (
       hasSuperStructure: false,
       totalBlocks:       0,
       blocks:            [],
-      progress:          project.exteriorsProgress,
-      quality:           project.exteriorsQuality ?? null
+      progress:          project.exteriorsProgress.map((p) => ({
+        ...p,
+        quality: p.quality ?? null
+      }))
     };
   }
 
-  const blocks = project.superStructures.map((block) => {
+  // ── SUPER-STRUCTURE PROJECT ────────────────────────────────────
+  const blocks = project.blocks.map((block) => {
+    const floors = block.floors.map((floor) => {
+      // Find progress for this exact block + floor
+      const progressRecord = project.exteriorsProgress.find(
+        (p) => p.blockId === block.id && p.floorId === floor.id
+      );
+
+      return {
+        floorId:      floor.id,
+        floorName:    floor.floorName,
+        floorNumber:  floor.floorNumber,
+        status:       progressRecord?.status    ?? "NOT_STARTED",
+        progressId:   progressRecord?.id        ?? null,
+        stage:        progressRecord?.stage      ?? null,
+        remarks:      progressRecord?.remarks    ?? null,
+        progressPhoto: progressRecord?.progressPhoto ?? null,
+        // Quality only available after progress is submitted
+        quality:      progressRecord?.quality    ?? null
+      };
+    });
+
     const progressList = project.exteriorsProgress.filter(
-      (p) => p.block === block.blockName
+      (p) => p.blockId === block.id
     );
 
+    const completedFloors = progressList.filter(
+      (p) => p.status === "COMPLETED"
+    ).length;
+
+    const blockStatus =
+      progressList.length === 0
+        ? "NOT_STARTED"
+        : completedFloors === block.totalFloors
+        ? "COMPLETED"
+        : "IN_PROGRESS";
+
     return {
+      blockId:         block.id,
       blockName:       block.blockName,
       totalFloors:     block.totalFloors,
-      floors:          block.floors ?? [],
-      completedFloors: progressList.filter((p) => p.isCompleted).length,
-      currentFloor:    progressList.length,
-      status:
-        progressList.length === 0
-          ? "NOT_STARTED"
-          : progressList.filter((p) => p.isCompleted).length === block.totalFloors
-          ? "COMPLETED"
-          : "IN_PROGRESS",
-      isStarted: progressList.length > 0
+      completedFloors,
+      status:          blockStatus,
+      floors
     };
   });
 
@@ -57,17 +95,18 @@ export const getExteriorsFullViewService = async (
     location:          project.location,
     hasSuperStructure: project.hasSuperStructure,
     totalBlocks:       blocks.length,
-    blocks,
-    quality:           project.exteriorsQuality ?? null
+    blocks
   };
 };
 
 // ─── UPSERT PROGRESS ───────────────────────────────────────────────
+// If id passed (PUT route) → update by id.
+// Otherwise upsert by projectId + blockId + floorId (one record per floor per block).
 export const upsertExteriorsProgressDB = async (
   data: any,
   meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
-  // Direct update by id (from PUT route)
+  // ── UPDATE BY ID ─────────────────────────────────────────────
   if (data.id) {
     const existing = await prisma.exteriorsProgress.findUnique({
       where: { id: data.id }
@@ -88,19 +127,19 @@ export const upsertExteriorsProgressDB = async (
 
     const { id, ...updateData } = data;
     return prisma.exteriorsProgress.update({
-      where: { id: existing.id },
-      data:  updateData
+      where:   { id: existing.id },
+      data:    updateData,
+      include: { quality: true }
     });
   }
 
-  // Upsert by projectId + block + floor + stageOfWork
+  // ── UPSERT BY projectId + blockId + floorId ──────────────────
   const existing = await prisma.exteriorsProgress.findFirst({
     where: {
-      projectId:   data.projectId,
-      block:       data.block       ?? null,
-      floor:       data.floor       ?? null,
-      stageOfWork: data.stageOfWork ?? null,
-      isActive:    true
+      projectId: data.projectId,
+      blockId:   data.blockId,
+      floorId:   data.floorId,
+      isActive:  true
     }
   });
 
@@ -117,12 +156,16 @@ export const upsertExteriorsProgressDB = async (
     });
 
     return prisma.exteriorsProgress.update({
-      where: { id: existing.id },
-      data
+      where:   { id: existing.id },
+      data,
+      include: { quality: true }
     });
   }
 
-  const created = await prisma.exteriorsProgress.create({ data });
+  const created = await prisma.exteriorsProgress.create({
+    data,
+    include: { quality: true }
+  });
 
   await logAudit({
     tableName: "exteriorsProgress",
@@ -165,12 +208,25 @@ export const deleteExteriorsProgressDB = async (
 };
 
 // ─── UPSERT QUALITY ────────────────────────────────────────────────
+// Quality is 1-to-1 with progress (via progressId @unique).
+// Upsert by progressId. Validates that the linked progress exists first.
 export const upsertExteriorsQualityDB = async (
   data: any,
   meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
-  const existing = await prisma.exteriorsQuality.findFirst({
-    where: { projectId: data.projectId, isActive: true }
+  // Ensure the linked progress exists
+  const progress = await prisma.exteriorsProgress.findUnique({
+    where: { id: data.progressId }
+  });
+
+  if (!progress) {
+    throw new Error(
+      "Progress record not found. Submit progress first before adding quality check."
+    );
+  }
+
+  const existing = await prisma.exteriorsQuality.findUnique({
+    where: { progressId: data.progressId }
   });
 
   if (existing) {
@@ -212,12 +268,14 @@ export const getExteriorsProgressByProjectService = async (
 ) =>
   prisma.exteriorsProgress.findMany({
     where:   { projectId, isActive: true },
+    include: { quality: true },
     orderBy: { createdAt: "desc" }
   });
 
-export const getExteriorsQualityByProjectService = async (
-  projectId: string
+// Fetch quality for a specific progress record (to pre-fill the form on edit)
+export const getExteriorsQualityByProgressService = async (
+  progressId: string
 ) =>
-  prisma.exteriorsQuality.findFirst({
-    where: { projectId, isActive: true }
+  prisma.exteriorsQuality.findUnique({
+    where: { progressId }
   });
