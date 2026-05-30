@@ -10,7 +10,7 @@ import {
   deleteSchema,
   updateProgressParamSchema,
   updateQualityParamSchema
-} from "./Exteriorsstage.schema"; 
+} from "./Exteriorsstage.schema";
 import {
   getExteriorsFullViewController,
   createExteriorsProgressController,
@@ -18,7 +18,7 @@ import {
   createExteriorsQualityController,
   updateExteriorsQualityController,
   getExteriorsProgressByProjectController,
-  getExteriorsQualityByProjectController,
+  getExteriorsQualityByProgressController,   // ← renamed (by progressId)
   deleteExteriorsProgressController
 } from "./Exteriorsstage.controller";
 
@@ -38,25 +38,31 @@ const qualityUpload = upload.fields([
 ]);
 
 // ─── GET ───────────────────────────────────────────────────────────
+
+// Full project view: superStructures → progress status + quality per progress
 router.get(
   "/full/:projectId",
   validateRequest(getByProjectSchema, "params"),
   getExteriorsFullViewController
 );
 
+// All progress records for a project (with quality included)
 router.get(
   "/progress/:projectId",
   validateRequest(getByProjectSchema, "params"),
   getExteriorsProgressByProjectController
 );
 
+// Quality for a specific progress record (used to pre-fill edit form)
 router.get(
-  "/quality/:projectId",
-  validateRequest(getByProjectSchema, "params"),
-  getExteriorsQualityByProjectController
+  "/quality/:progressId",
+  validateRequest(updateQualityParamSchema, "params"),
+  getExteriorsQualityByProgressController
 );
 
 // ─── PROGRESS ──────────────────────────────────────────────────────
+
+// Create progress (upserts by projectId + block + floor + stageOfWork)
 router.post(
   "/progress",
   upload.fields([{ name: "progressPhoto", maxCount: 5 }]),
@@ -64,6 +70,7 @@ router.post(
   createExteriorsProgressController
 );
 
+// Update progress by id
 router.put(
   "/progress/:id",
   upload.fields([{ name: "progressPhoto", maxCount: 5 }]),
@@ -72,6 +79,7 @@ router.put(
   updateExteriorsProgressController
 );
 
+// Soft delete progress
 router.delete(
   "/progress/:id",
   validateRequest(deleteSchema, "params"),
@@ -79,6 +87,11 @@ router.delete(
 );
 
 // ─── QUALITY ───────────────────────────────────────────────────────
+// Both POST and PUT use the same upsert logic (by progressId).
+// POST  → first submission (creates quality record)
+// PUT   → re-open & edit (updates existing quality record)
+// The form should call GET /quality/:progressId first to pre-fill values.
+
 router.post(
   "/quality",
   qualityUpload,
@@ -87,7 +100,7 @@ router.post(
 );
 
 router.put(
-  "/quality/:projectId",
+  "/quality/:progressId",
   qualityUpload,
   validateRequest(updateQualityParamSchema, "params"),
   validateRequest(updateExteriorsQualitySchema, "body"),

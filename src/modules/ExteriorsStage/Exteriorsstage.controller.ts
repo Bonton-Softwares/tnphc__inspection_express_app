@@ -7,7 +7,7 @@ import {
   updateExteriorsQualityUsecase,
   deleteExteriorsProgressUsecase,
   getExteriorsProgressByProjectUsecase,
-  getExteriorsQualityByProjectUsecase
+  getExteriorsQualityByProgressUsecase   // ← by progressId (mirrors Interiors)
 } from "./Exteriorsstage.usecase";
 
 const getSingleValue = (val: any): string =>
@@ -59,6 +59,8 @@ export const updateExteriorsProgressController = async (
 };
 
 // ─── CREATE QUALITY ────────────────────────────────────────────────
+// Quality is tied to a specific progress record via progressId in the body.
+// If quality already exists for that progressId, it will be updated (upsert).
 export const createExteriorsQualityController = async (
   req: Request,
   res: Response
@@ -74,6 +76,8 @@ export const createExteriorsQualityController = async (
 };
 
 // ─── UPDATE QUALITY ────────────────────────────────────────────────
+// Same upsert behaviour as create — idempotent by progressId.
+// Used when the form is reopened to edit existing quality data.
 export const updateExteriorsQualityController = async (
   req: Request,
   res: Response
@@ -88,7 +92,7 @@ export const updateExteriorsQualityController = async (
   }
 };
 
-// ─── DELETE ────────────────────────────────────────────────────────
+// ─── DELETE PROGRESS ───────────────────────────────────────────────
 export const deleteExteriorsProgressController = async (
   req: Request,
   res: Response
@@ -102,7 +106,7 @@ export const deleteExteriorsProgressController = async (
   }
 };
 
-// ─── GET PROGRESS ──────────────────────────────────────────────────
+// ─── GET PROGRESS BY PROJECT ───────────────────────────────────────
 export const getExteriorsProgressByProjectController = async (
   req: Request,
   res: Response
@@ -116,14 +120,15 @@ export const getExteriorsProgressByProjectController = async (
   }
 };
 
-// ─── GET QUALITY ───────────────────────────────────────────────────
-export const getExteriorsQualityByProjectController = async (
+// ─── GET QUALITY BY PROGRESS ────────────────────────────────────────
+// Fetch quality for a specific progress record (to pre-fill the form on edit).
+export const getExteriorsQualityByProgressController = async (
   req: Request,
   res: Response
 ) => {
   try {
-    const projectId = getSingleValue(req.params.projectId);
-    const data = await getExteriorsQualityByProjectUsecase(projectId);
+    const progressId = getSingleValue(req.params.progressId);
+    const data = await getExteriorsQualityByProgressUsecase(progressId);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });
