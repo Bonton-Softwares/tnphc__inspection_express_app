@@ -1,14 +1,17 @@
-import express from "express";
+import { Router } from "express";
 
 import {
-  downloadSuperStructurePdfController
+  downloadAdminPdfController,
+  downloadUserPdfController,
+  downloadProjectPdfController,
 } from "./pdf.controller";
 
-const router = express.Router();
+const router = Router();
 
-router.get(
-  "/superstructure/:projectId",
-  downloadSuperStructurePdfController
-);
+router.get("/", downloadAdminPdfController);
+
+router.get("/user/:userId", downloadUserPdfController);
+
+router.get("/:projectId", downloadProjectPdfController);
 
 export default router;
