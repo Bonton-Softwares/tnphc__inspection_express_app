@@ -1045,7 +1045,37 @@ export const getProjectsByUserService = async ({
 
 export const getProjectDashboardService = async (userId?: string) => {
   const where: any = { isActive: true };
-  if (userId) where.createdByUserId = userId;
+
+  if (userId) {
+    const userAccess = await prisma.user_management.findMany({
+      where: { userId, isActive: true },
+    });
+
+    const departmentIds = [
+      ...new Set(userAccess.map((u) => u.departmentId)),
+    ];
+
+    const districtIds = userAccess
+      .filter((u) => u.districtId)
+      .map((u) => u.districtId as string);
+
+    const specialUnitIds = userAccess
+      .filter((u) => u.specialUnitId)
+      .map((u) => u.specialUnitId as string);
+
+    where.departmentId = { in: departmentIds };
+
+    where.projectAccessMappings = {
+      some: {
+        isActive: true,
+        OR: [
+          { districtId: { in: districtIds } },
+          { specialUnitId: { in: specialUnitIds } },
+          { districtId: null, specialUnitId: null },
+        ],
+      },
+    };
+  }
 
   const projects = await prisma.project.findMany({
     where,
@@ -1055,12 +1085,10 @@ export const getProjectDashboardService = async (userId?: string) => {
       foundationProgresses: { where: { isActive: true } },
       foundationQualityChecks: { where: { isActive: true } },
       plinthStages: { where: { isActive: true } },
-      // ── FIX: nest quality inside interiorsProgress ────────
       interiorsProgress: {
         where: { isActive: true },
         include: { quality: true },
       },
-      // ── FIX: nest quality inside exteriorsProgress ────────
       exteriorsProgress: {
         where: { isActive: true },
         include: { quality: true },
@@ -1069,7 +1097,6 @@ export const getProjectDashboardService = async (userId?: string) => {
       DevelopmentWork: { where: { isActive: true } },
       TakeoverBuildingInsepction: { where: { isActive: true } },
       TakeoverDevelopmentWork: { where: { isActive: true } },
-      // ── FIX: nest quality inside SuperStructureProgress ───
       SuperStructureProgress: {
         where: { isActive: true },
         include: { quality: true },
@@ -1094,7 +1121,6 @@ export const getProjectDashboardService = async (userId?: string) => {
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
-    // ── FIX: check nested .quality instead of top-level field ─
     if (p.SuperStructureProgress.length > 0 || p.SuperStructureProgress.some((sp) => sp.quality)) done.push("Super Structure");
     if (p.interiorsProgress.length > 0 || p.interiorsProgress.some((ip) => ip.quality)) done.push("Interiors");
     if (p.exteriorsProgress.length > 0 || p.exteriorsProgress.some((ep) => ep.quality)) done.push("Exteriors");
