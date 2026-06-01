@@ -194,7 +194,7 @@ function resolveStageDetail(
     case "Superstructure Stage":
       return {
         hasSuperStructure: true,
-        totalBlocks:       project.superStructures.length,
+        totalBlocks:       project.blocks.length,
         totalFloors:       totalSuperFloors,
         completedFloors:   completedSuperFloors,
         qualityChecked:    !!project.superStructureQuality,
@@ -214,7 +214,7 @@ function resolveStageDetail(
 
     case "Interiors":
       return {
-        totalBlocks:    project.superStructures.length,
+        totalBlocks:    project.blocks.length,
         qualityChecked: !!project.interiorsQuality,
         // FIX 1: interiorBlocks now correctly matches null-block progress entries
         blocks:         interiorBlocks,
@@ -223,7 +223,7 @@ function resolveStageDetail(
 
     case "Exteriors":
       return {
-        totalBlocks:    project.superStructures.length,
+        totalBlocks:    project.blocks.length,
         qualityChecked: !!project.exteriorsQuality,
         blocks:         exteriorBlocks,
         qualityRecord:  project.exteriorsQuality ?? null,
@@ -336,15 +336,83 @@ export const getAdminDashboardReportService = async ({
         foundationQualityChecks:    { where: { isActive: true } },
         plinthStages:               { where: { isActive: true } },
 
-        superStructures:        { where: { isActive: true } },
-        SuperStructureProgress: { where: { isActive: true } },
-        superStructureQuality:  true,
+        // superStructures:        { where: { isActive: true } },
+        // SuperStructureProgress: { where: { isActive: true } },
+        // superStructureQuality:  true,
 
-        interiorsProgress: { where: { isActive: true } },
-        interiorsQuality:  true,
+        // interiorsProgress: { where: { isActive: true } },
+        // interiorsQuality:  true,
 
-        exteriorsProgress: { where: { isActive: true } },
-        exteriorsQuality:  true,
+        // exteriorsProgress: { where: { isActive: true } },
+        // exteriorsQuality:  true,
+
+        blocks: {
+  include: {
+    floors: true,
+    superStructureProgresses: {
+      include: {
+        quality: true,
+        floor: true,
+      },
+      where: {
+        isActive: true,
+      },
+    },
+    interiorsProgresses: {
+      include: {
+        quality: true,
+        floor: true,
+      },
+      where: {
+        isActive: true,
+      },
+    },
+    exteriorsProgresses: {
+      include: {
+        quality: true,
+        floor: true,
+      },
+      where: {
+        isActive: true,
+      },
+    },
+  },
+},
+
+floors: true,
+
+SuperStructureProgress: {
+  where: {
+    isActive: true,
+  },
+  include: {
+    block: true,
+    floor: true,
+    quality: true,
+  },
+},
+
+interiorsProgress: {
+  where: {
+    isActive: true,
+  },
+  include: {
+    block: true,
+    floor: true,
+    quality: true,
+  },
+},
+
+exteriorsProgress: {
+  where: {
+    isActive: true,
+  },
+  include: {
+    block: true,
+    floor: true,
+    quality: true,
+  },
+},
 
         BuildingInspection:         { where: { isActive: true } },
         DevelopmentWork:            { where: { isActive: true } },
@@ -384,7 +452,7 @@ export const getAdminDashboardReportService = async ({
 
     // ── Block summaries ──
     const superStructureBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.superStructures, project.SuperStructureProgress, "blockName")
+      ? buildBlockSummary(project.blocks, project.SuperStructureProgress, "blockName")
       : [];
 
     const totalSuperFloors     = superStructureBlocks.reduce((acc: number, b: any) => acc + b.totalFloors, 0);
@@ -392,11 +460,11 @@ export const getAdminDashboardReportService = async ({
 
     // FIX 1: interiors/exteriors use "block" field (can be null in DB)
     const interiorBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.superStructures, project.interiorsProgress, "block")
+      ? buildBlockSummary(project.blocks, project.interiorsProgress, "block")
       : [];
 
     const exteriorBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.superStructures, project.exteriorsProgress, "block")
+      ? buildBlockSummary(project.blocks, project.exteriorsProgress, "block")
       : [];
 
     // ── Build stages object ──
@@ -486,7 +554,7 @@ export const getAdminDashboardReportService = async ({
       stages,
 
       // FIX 2: top-level superStructure no longer duplicates — just block metadata
-      superStructure: project.superStructures.map((b: any) => ({
+      superStructure: project.blocks.map((b: any) => ({
         blockName:   b.blockName,
         totalFloors: b.totalFloors ?? 0,
         floors:      b.floors ?? [],
