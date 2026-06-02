@@ -220,10 +220,6 @@ export const deleteProgressDB = async (
   });
 };
 
-// ─── UPSERT QUALITY ────────────────────────────────────────────────
-// Quality is 1-to-1 with progress (via progressId @unique).
-// Upsert by progressId — if quality exists for this progress, update it.
-// Quality can only be submitted after the progress record exists.
 export const upsertQualityDB = async (
   data: any,
   meta: { userId?: string; roleId?: string; ip?: string } = {}
@@ -233,39 +229,65 @@ export const upsertQualityDB = async (
     where: { id: data.progressId }
   });
 
-  if (!progress) throw new Error("Progress record not found. Submit progress first before adding quality check.");
+  if (!progress) {
+    throw new Error(
+      "Progress record not found. Submit progress first before adding quality check."
+    );
+  }
 
   const existing = await prisma.superStructureQuality.findUnique({
     where: { progressId: data.progressId }
   });
 
+  // ── UPDATE QUALITY ─────────────────────────────────────
   if (existing) {
     await logAudit({
       tableName: "superStructureQuality",
-      recordId:  existing.id,
-      action:    "UPDATE",
-      oldValue:  existing,
-      newValue:  data,
-      userId:    meta.userId,
-      roleId:    meta.roleId,
+      recordId: existing.id,
+      action: "UPDATE",
+      oldValue: existing,
+      newValue: data,
+      userId: meta.userId,
+      roleId: meta.roleId,
       ipAddress: meta.ip
     });
 
-    return prisma.superStructureQuality.update({
+    const updated = await prisma.superStructureQuality.update({
       where: { id: existing.id },
       data
     });
+
+    // Mark progress as completed
+    await prisma.superStructureProgress.update({
+      where: { id: data.progressId },
+      data: {
+        status: "COMPLETED"
+      }
+    });
+
+    return updated;
   }
 
-  const created = await prisma.superStructureQuality.create({ data });
+  // ── CREATE QUALITY ─────────────────────────────────────
+  const created = await prisma.superStructureQuality.create({
+    data
+  });
+
+  // Mark progress as completed
+  await prisma.superStructureProgress.update({
+    where: { id: data.progressId },
+    data: {
+      status: "COMPLETED"
+    }
+  });
 
   await logAudit({
     tableName: "superStructureQuality",
-    recordId:  created.id,
-    action:    "CREATE",
-    newValue:  data,
-    userId:    meta.userId,
-    roleId:    meta.roleId,
+    recordId: created.id,
+    action: "CREATE",
+    newValue: data,
+    userId: meta.userId,
+    roleId: meta.roleId,
     ipAddress: meta.ip
   });
 
