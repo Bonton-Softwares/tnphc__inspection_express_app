@@ -47,6 +47,8 @@ const upsertGrade = async (
 // ─────────────────────────────────────────────
 export const createMaterialService = async (data: {
   name: string;
+  hasType: boolean;
+  hasGrade: boolean;
   types?: string[];
   grades?: string[];
   userId?: string;
@@ -54,48 +56,52 @@ export const createMaterialService = async (data: {
   const name = toTitleCase(data.name);
   const userId = data.userId || null;
 
-  // Check duplicate
   const existing = await prisma.material.findFirst({
-    where: { name: { equals: name, mode: "insensitive" }, isActive: true },
+    where: {
+      name: {
+        equals: name,
+        mode: "insensitive",
+      },
+      isActive: true,
+    },
   });
-  if (existing) throw new Error("Material already exists");
 
-  const hasType = !!(data.types && data.types.length > 0);
-  const hasGrade = !!(data.grades && data.grades.length > 0);
+  if (existing) {
+    throw new Error("Material already exists");
+  }
 
-  // Create material
   const material = await prisma.material.create({
     data: {
       name,
-      hasType,
-      hasGrade,
+      hasType: data.hasType,
+      hasGrade: data.hasGrade,
       createdById: userId,
     },
   });
 
-  // Resolve type ids
   const typeIds: (string | null)[] = [];
-  if (hasType) {
-    for (const typeName of data.types!) {
-      const id = await upsertMaterialType(typeName, userId);
-      typeIds.push(id);
-    }
-  } else {
-    typeIds.push(null); // no type
-  }
-
-  // Resolve grade ids
   const gradeIds: (string | null)[] = [];
-  if (hasGrade) {
-    for (const gradeName of data.grades!) {
-      const id = await upsertGrade(gradeName, userId);
-      gradeIds.push(id);
+
+  // TYPES
+  if (data.hasType) {
+    for (const typeName of data.types || []) {
+      const typeId = await upsertMaterialType(typeName, userId);
+      typeIds.push(typeId);
     }
   } else {
-    gradeIds.push(null); // no grade
+    typeIds.push(null);
   }
 
-  // Create material_grade rows: cross-product of types × grades
+  // GRADES
+  if (data.hasGrade) {
+    for (const gradeName of data.grades || []) {
+      const gradeId = await upsertGrade(gradeName, userId);
+      gradeIds.push(gradeId);
+    }
+  } else {
+    gradeIds.push(null);
+  }
+
   const materialGradeData: {
     materialId: string;
     materialTypeId: string | null;
@@ -108,13 +114,13 @@ export const createMaterialService = async (data: {
       materialGradeData.push({
         materialId: material.id,
         materialTypeId: typeId,
-        gradeId: gradeId,
+        gradeId,
         createdById: userId,
       });
     }
   }
 
-  if (materialGradeData.length > 0) {
+  if (materialGradeData.length) {
     await prisma.material_grade.createMany({
       data: materialGradeData,
       skipDuplicates: true,
@@ -129,7 +135,10 @@ export const createMaterialService = async (data: {
 // ─────────────────────────────────────────────
 export const getMaterialByIdService = async (id: string) => {
   const material = await prisma.material.findFirst({
-    where: { id, isActive: true },
+    where: {
+      id,
+      isActive: true,
+    },
     include: {
       materialGrades: {
         where: { isActive: true },
@@ -138,14 +147,24 @@ export const getMaterialByIdService = async (id: string) => {
           materialType: true,
         },
       },
+
+      materialBrandGrades: {
+        where: { isActive: true },
+        include: {
+          brand: true,
+          grade: true,
+          type: true,
+        },
+      },
     },
   });
 
-  if (!material) throw new Error("Material not found");
+  if (!material) {
+    throw new Error("Material not found");
+  }
 
   return formatMaterial(material);
 };
-
 // ─────────────────────────────────────────────
 // UPDATE
 // ─────────────────────────────────────────────
@@ -153,6 +172,8 @@ export const updateMaterialService = async (
   id: string,
   data: {
     name?: string;
+    hasType?: boolean;
+    hasGrade?: boolean;
     types?: string[];
     grades?: string[];
     userId?: string;
@@ -160,122 +181,125 @@ export const updateMaterialService = async (
 ) => {
   const userId = data.userId || null;
 
-  // Check material exists
   const material = await prisma.material.findFirst({
-    where: { id, isActive: true },
+    where: {
+      id,
+      isActive: true,
+    },
   });
-  if (!material) throw new Error("Material not found");
 
-  // Check name duplicate (if name is being changed)
-  const name = data.name ? toTitleCase(data.name) : material.name;
+  if (!material) {
+    throw new Error("Material not found");
+  }
+
+  const name = data.name
+    ? toTitleCase(data.name)
+    : material.name;
 
   if (data.name) {
     const duplicate = await prisma.material.findFirst({
       where: {
-        name: { equals: name, mode: "insensitive" },
+        name: {
+          equals: name,
+          mode: "insensitive",
+        },
         isActive: true,
-        NOT: { id },
+        NOT: {
+          id,
+        },
       },
     });
-    if (duplicate) throw new Error("Material already exists");
+
+    if (duplicate) {
+      throw new Error("Material already exists");
+    }
   }
 
   const hasType =
-    data.types !== undefined
-      ? data.types.length > 0
+    data.hasType !== undefined
+      ? data.hasType
       : material.hasType;
 
   const hasGrade =
-    data.grades !== undefined
-      ? data.grades.length > 0
+    data.hasGrade !== undefined
+      ? data.hasGrade
       : material.hasGrade;
 
-  // Update material record
   await prisma.material.update({
     where: { id },
-    data: { name, hasType, hasGrade, updatedById: userId },
+    data: {
+      name,
+      hasType,
+      hasGrade,
+      updatedById: userId,
+    },
   });
 
-  // If types or grades are being updated, replace material_grade rows
-  if (data.types !== undefined || data.grades !== undefined) {
-    // Soft-delete all existing material_grade rows for this material
-    await prisma.material_grade.updateMany({
-      where: { materialId: id, isActive: true },
-      data: { isActive: false, updatedById: userId },
+  await prisma.material_grade.updateMany({
+    where: {
+      materialId: id,
+      isActive: true,
+    },
+    data: {
+      isActive: false,
+      updatedById: userId,
+    },
+  });
+
+  const typeIds: (string | null)[] = [];
+  const gradeIds: (string | null)[] = [];
+
+  // TYPES
+  if (hasType) {
+    for (const typeName of data.types || []) {
+      const typeId = await upsertMaterialType(
+        typeName,
+        userId
+      );
+
+      typeIds.push(typeId);
+    }
+  } else {
+    typeIds.push(null);
+  }
+
+  // GRADES
+  if (hasGrade) {
+    for (const gradeName of data.grades || []) {
+      const gradeId = await upsertGrade(
+        gradeName,
+        userId
+      );
+
+      gradeIds.push(gradeId);
+    }
+  } else {
+    gradeIds.push(null);
+  }
+
+  const materialGradeData: {
+    materialId: string;
+    materialTypeId: string | null;
+    gradeId: string | null;
+    createdById: string | null;
+  }[] = [];
+
+  for (const typeId of typeIds) {
+    for (const gradeId of gradeIds) {
+      materialGradeData.push({
+        materialId: id,
+        materialTypeId: typeId,
+        gradeId,
+        createdById: userId,
+      });
+    }
+  }
+
+  if (materialGradeData.length > 0) {
+    await prisma.material_grade.createMany({
+      data: materialGradeData,
+      skipDuplicates: true,
     });
-
-    // Resolve NEW type ids
-    let typeIds: (string | null)[] = [];
-    if (data.types !== undefined) {
-      if (data.types.length > 0) {
-        for (const typeName of data.types) {
-          const tid = await upsertMaterialType(typeName, userId);
-          typeIds.push(tid);
-        }
-      } else {
-        typeIds.push(null);
-      }
-    } else {
-      // types not in update payload → keep current types
-      const existingTypes = await prisma.material_grade.findMany({
-        where: { materialId: id, isActive: false, materialTypeId: { not: null } },
-        select: { materialTypeId: true },
-        distinct: ["materialTypeId"],
-      });
-      typeIds =
-        existingTypes.length > 0
-          ? existingTypes.map((e) => e.materialTypeId)
-          : [null];
-    }
-
-    // Resolve NEW grade ids
-    let gradeIds: (string | null)[] = [];
-    if (data.grades !== undefined) {
-      if (data.grades.length > 0) {
-        for (const gradeName of data.grades) {
-          const gid = await upsertGrade(gradeName, userId);
-          gradeIds.push(gid);
-        }
-      } else {
-        gradeIds.push(null);
-      }
-    } else {
-      const existingGrades = await prisma.material_grade.findMany({
-        where: { materialId: id, isActive: false, gradeId: { not: null } },
-        select: { gradeId: true },
-        distinct: ["gradeId"],
-      });
-      gradeIds =
-        existingGrades.length > 0
-          ? existingGrades.map((e) => e.gradeId)
-          : [null];
-    }
-
-    // Re-create cross-product
-    const materialGradeData: {
-      materialId: string;
-      materialTypeId: string | null;
-      gradeId: string | null;
-      createdById: string | null;
-    }[] = [];
-
-    for (const typeId of typeIds) {
-      for (const gradeId of gradeIds) {
-        materialGradeData.push({
-          materialId: id,
-          materialTypeId: typeId,
-          gradeId: gradeId,
-          createdById: userId,
-        });
-      }
-    }
-
-    if (materialGradeData.length > 0) {
-      await prisma.material_grade.createMany({
-        data: materialGradeData,
-        skipDuplicates: true,
-      });
-    }
   }
 
   return getMaterialByIdService(id);
@@ -355,10 +379,13 @@ export const listMaterialsService = async (query: any) => {
 // FORMAT HELPER — shapes response cleanly
 // ─────────────────────────────────────────────
 const formatMaterial = (material: any) => {
+  const materialGrades = material.materialGrades || [];
+  const materialBrandGrades = material.materialBrandGrades || [];
+
   // Grades
   const grades = Array.from(
     new Map(
-      material.materialGrades
+      materialGrades
         .filter((mg: any) => mg.grade)
         .map((mg: any) => [
           mg.grade.id,
@@ -373,7 +400,7 @@ const formatMaterial = (material: any) => {
   // Types
   const types = Array.from(
     new Map(
-      material.materialGrades
+      materialGrades
         .filter((mg: any) => mg.materialType)
         .map((mg: any) => [
           mg.materialType.id,
@@ -388,7 +415,7 @@ const formatMaterial = (material: any) => {
   // Brands
   const brands = Array.from(
     new Map(
-      material.materialBrandGrades
+      materialBrandGrades
         .filter((mbg: any) => mbg.brand)
         .map((mbg: any) => [
           mbg.brand.id,
@@ -400,8 +427,8 @@ const formatMaterial = (material: any) => {
     ).values()
   );
 
-  // Brand-wise mapping
-  const brandMappings = material.materialBrandGrades.map((mbg: any) => ({
+  // Brand Mapping
+  const brandMappings = materialBrandGrades.map((mbg: any) => ({
     id: mbg.id,
 
     brand: mbg.brand
@@ -438,7 +465,6 @@ const formatMaterial = (material: any) => {
     types,
     grades,
     brands,
-
     brandMappings,
 
     createdAt: material.createdAt,
