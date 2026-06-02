@@ -1,12 +1,10 @@
-// src/modules/pdf/generators/userDetailPdf.ts
+// src/modules/pdf/generators/singleProjectPdf.ts
 import PDFDocument                                          from "pdfkit";
-import { PDF_THEME as T }                                   from "../configs/pdfTheme";
 import { STAGE_ORDER }                                      from "../configs/stageConfig";
 import { renderHeader }                                     from "../helpers/renderHeader";
 import { renderFooter }                                     from "../helpers/renderFooter";
 import { renderSectionHeading, spacer, setPatchingFooters } from "../helpers/renderSection";
 import { renderFields }                                     from "../helpers/renderFields";
-import { renderTable }                                      from "../helpers/renderTable";
 
 import { renderLandSiteData }        from "../stage-data/landSite.data";
 import { renderPreConstructionData } from "../stage-data/preConstruction.data";
@@ -48,12 +46,11 @@ function stageHasData(s: any): boolean {
   return false;
 }
 
-export async function generateUserDetailPdf(params: {
-  user:         any;
-  projects:     any[];
+export async function generateSingleProjectPdf(params: {
+  project:      any;
   generatedBy?: string;
 }): Promise<Buffer> {
-  const { user, projects, generatedBy } = params;
+  const { project, generatedBy } = params;
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -68,68 +65,47 @@ export async function generateUserDetailPdf(params: {
       doc.on("data",  (c: Buffer) => chunks.push(c));
       doc.on("error", reject);
 
-      // ── COVER PAGE ──────────────────────────────────────────────────────
+      // ── HEADER ──────────────────────────────────────────────
       renderHeader(
         doc,
-        "USER PROJECT REPORT",
-        `Officer: ${user.username}  |  Role: ${user.role}  |  Dept: ${user.department}`
+        "PROJECT INSPECTION REPORT",
+        `${project.projectName}  |  Code: #${project.code}  |  Dept: ${project.departmentName}`
       );
 
       spacer(doc, 10);
-      renderSectionHeading(doc, "Officer Details", 2);
+      renderSectionHeading(doc, "Project Details", 2);
       renderFields(doc, [
-        { label: "Name",       value: user.username },
-        { label: "Email",      value: user.email },
-        { label: "Role",       value: user.role },
-        { label: "Department", value: user.department },
+        { label: "Project Code",   value: `#${project.code}` },
+        { label: "Project Name",   value: project.projectName },
+        { label: "Building Type",  value: project.buildingType },
+        { label: "Department",     value: project.departmentName },
+        { label: "Location",       value: project.location },
+        { label: "Jurisdiction",   value: project.jurisdictionType },
+        { label: "Access Type",    value: project.accessType },
+        { label: "Status",         value: project.status },
+        { label: "Current Stage",  value: project.currentStage },
+        { label: "Created By",     value: project.createdBy?.username },
+        { label: "Created At",     value: project.createdAt },
       ]);
 
-      spacer(doc, 8);
-      renderTable(doc, [
-        { header: "#",          key: "idx",         width: 0.4 },
-        { header: "Code",       key: "code",        width: 0.5 },
-        { header: "Project",    key: "projectName", width: 2.5 },
-        { header: "Status",     key: "status",      width: 1.2 },
-        { header: "Stage",      key: "stage",       width: 1.5 },
-        { header: "Done",       key: "completed",   width: 0.8 },
-        { header: "Pending",    key: "pending",     width: 0.8 },
-      ], projects.map((p: any, i: number) => ({
-        idx:         i + 1,
-        code:        `#${p.code}`,
-        projectName: p.projectName,
-        status:      p.status,
-        stage:       p.currentStage,
-        completed:   p.completedStages,
-        pending:     p.pendingStages,
-      })), "Assigned Projects Overview");
+      spacer(doc, 6);
+      renderFields(doc, [
+        { label: "Total Stages",     value: project.selectedStageCount },
+        { label: "Completed Stages", value: project.completedStages },
+        { label: "Pending Stages",   value: project.pendingStages },
+      ], 1);
 
-      // ── PER-PROJECT DETAIL ──────────────────────────────────────────────
-      for (let idx = 0; idx < projects.length; idx++) {
-        const project = projects[idx];
-        doc.addPage();
-
-        renderSectionHeading(doc, `Project ${idx + 1}: ${project.projectName}`, 1);
-        spacer(doc, 4);
-
-        renderFields(doc, [
-          { label: "Code",          value: `#${project.code}` },
-          { label: "Building Type", value: project.buildingType },
-          { label: "Department",    value: project.departmentName },
-          { label: "Location",      value: project.location },
-          { label: "Status",        value: project.status },
-          { label: "Current Stage", value: project.currentStage },
-          { label: "Created At",    value: project.createdAt },
-        ]);
-
-        for (const key of STAGE_ORDER) {
-          const stageData = project.stages[key];
-          if (!stageData || !stageHasData(stageData)) continue;
-          const renderer = STAGE_RENDERERS[key];
-          if (renderer) await renderer(doc, stageData);
-        }
+      // ── STAGE DETAILS ────────────────────────────────────────
+      for (const key of STAGE_ORDER) {
+        const stageData = project.stages[key];
+        if (!stageData || !stageHasData(stageData)) continue;
+        const renderer = STAGE_RENDERERS[key];
+        if (renderer) await renderer(doc, stageData);
       }
 
-      // ── PATCH FOOTERS ───────────────────────────────────────────────────
+      // ── PATCH FOOTERS ────────────────────────────────────────
+      // setPatchingFooters(true) makes checkPageBreak a no-op so that
+      // switchToPage() inside this loop can never trigger an extra blank page.
       setPatchingFooters(true);
       try {
         const range      = doc.bufferedPageRange();
