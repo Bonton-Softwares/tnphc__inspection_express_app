@@ -874,23 +874,56 @@ export const getProjectsByUserService = async ({
       done.push("Plinth");
 
     // ── FIX: check nested .quality instead of top-level field ─
-    if (
-      p.SuperStructureProgress.length > 0 ||
-      p.SuperStructureProgress.some((sp) => sp.quality)
-    )
-      done.push("Super Structure");
+    const totalSuperStructureFloors = p.blocks.reduce(
+  (sum, block) => sum + block.totalFloors,
+  0
+);
 
-    if (
-      p.interiorsProgress.length > 0 ||
-      p.interiorsProgress.some((ip) => ip.quality)
-    )
-      done.push("Interiors");
+const completedSuperStructureFloors =
+  p.SuperStructureProgress.filter(
+    (sp) => sp.status === "COMPLETED"
+  ).length;
 
-    if (
-      p.exteriorsProgress.length > 0 ||
-      p.exteriorsProgress.some((ep) => ep.quality)
-    )
-      done.push("Exteriors");
+if (
+  totalSuperStructureFloors > 0 &&
+  completedSuperStructureFloors === totalSuperStructureFloors
+) {
+  done.push("Super Structure");
+}
+
+    const totalInteriorFloors = p.blocks.reduce(
+  (sum, block) => sum + block.totalFloors,
+  0
+);
+
+const completedInteriorFloors =
+  p.interiorsProgress.filter(
+    (ip) => ip.status === "COMPLETED"
+  ).length;
+
+if (
+  totalInteriorFloors > 0 &&
+  completedInteriorFloors === totalInteriorFloors
+) {
+  done.push("Interiors");
+}
+
+  const totalExteriorFloors = p.blocks.reduce(
+  (sum, block) => sum + block.totalFloors,
+  0
+);
+
+const completedExteriorFloors =
+  p.exteriorsProgress.filter(
+    (ep) => ep.status === "COMPLETED"
+  ).length;
+
+if (
+  totalExteriorFloors > 0 &&
+  completedExteriorFloors === totalExteriorFloors
+) {
+  done.push("Exteriors");
+}
 
     if (p.BuildingInspection.length > 0)
       done.push("Building Inspection");
@@ -1121,9 +1154,57 @@ export const getProjectDashboardService = async (userId?: string) => {
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
-    if (p.SuperStructureProgress.length > 0 || p.SuperStructureProgress.some((sp) => sp.quality)) done.push("Super Structure");
-    if (p.interiorsProgress.length > 0 || p.interiorsProgress.some((ip) => ip.quality)) done.push("Interiors");
-    if (p.exteriorsProgress.length > 0 || p.exteriorsProgress.some((ep) => ep.quality)) done.push("Exteriors");
+    const totalSuperStructureFloors = await prisma.project_floor.count({
+  where: {
+    projectId: p.id
+  }
+});
+
+const completedSuperStructureFloors =
+  p.SuperStructureProgress.filter(
+    (sp) => sp.status === "COMPLETED"
+  ).length;
+
+if (
+  totalSuperStructureFloors > 0 &&
+  completedSuperStructureFloors === totalSuperStructureFloors
+) {
+  done.push("Super Structure");
+}
+   const totalInteriorFloors = await prisma.project_floor.count({
+  where: {
+    projectId: p.id
+  }
+});
+
+const completedInteriorFloors =
+  p.interiorsProgress.filter(
+    (ip) => ip.status === "COMPLETED"
+  ).length;
+
+if (
+  totalInteriorFloors > 0 &&
+  completedInteriorFloors === totalInteriorFloors
+) {
+  done.push("Interiors");
+}
+const totalExteriorFloors = await prisma.project_floor.count({
+  where: {
+    projectId: p.id
+  }
+});
+
+const completedExteriorFloors =
+  p.exteriorsProgress.filter(
+    (ep) => ep.status === "COMPLETED"
+  ).length;
+
+if (
+  totalExteriorFloors > 0 &&
+  completedExteriorFloors === totalExteriorFloors
+) {
+  done.push("Exteriors");
+}
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
     if (p.DevelopmentWork.length > 0) done.push("Development Work");
     if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
