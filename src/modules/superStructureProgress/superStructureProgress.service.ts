@@ -1,10 +1,7 @@
 import prisma from "../../shared/prisma";
 import { logAudit } from "../../auditLogService";
 
-// ─── GET FULL VIEW ─────────────────────────────────────────────────
-// Returns project with blocks and floors (real IDs), progress status per floor,
-// and quality check per progress record.
-// Works for both hasSuperStructure=true and false projects.
+
 export const getSuperStructureFullViewService = async (
   projectId: string
 ) => {
