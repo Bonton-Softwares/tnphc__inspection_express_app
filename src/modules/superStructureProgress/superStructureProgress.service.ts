@@ -75,16 +75,22 @@ export const getSuperStructureFullViewService = async (
       (p) => p.blockId === block.id
     );
 
-    const completedFloors = progressList.filter(
-      (p) => p.status === "COMPLETED"
-    ).length;
+const completedFloors = progressList.filter(
+  (p) => p.status === "COMPLETED"
+).length;
 
-    const blockStatus =
-      progressList.length === 0
-        ? "NOT_STARTED"
-        : completedFloors === block.totalFloors
-        ? "COMPLETED"
-        : "IN_PROGRESS";
+const inProgressFloors = progressList.filter(
+  (p) => p.status === "IN_PROGRESS"
+).length;
+
+const blockStatus =
+  progressList.length === 0
+    ? "NOT_STARTED"
+    : completedFloors === block.totalFloors
+    ? "COMPLETED"
+    : inProgressFloors > 0
+    ? "IN_PROGRESS"
+    : "NOT_STARTED";
 
     return {
       blockId:         block.id,
