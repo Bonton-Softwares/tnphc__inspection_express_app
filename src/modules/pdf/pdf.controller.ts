@@ -8,8 +8,8 @@ import {
 
 /**
  * GET /pdf
- * Query params: search, districts (comma-sep), departments (comma-sep), stages (comma-sep)
- * Downloads admin report PDF.
+ * Admin report — all projects
+ * Query: ?search=&districts=D1,D2&departments=Dept1&stages=Foundation Stage
  */
 export const downloadAdminPdfController = async (req: Request, res: Response) => {
   try {
@@ -18,67 +18,66 @@ export const downloadAdminPdfController = async (req: Request, res: Response) =>
     const departments = parseList(req.query.departments as string | undefined);
     const stages      = parseList(req.query.stages      as string | undefined);
 
-    // req.user is set by your auth middleware
     const generatedByUserId = (req as any).user?.id;
     const generatedBy       = (req as any).user?.username;
 
     const buffer = await generateAdminPdfUsecase({
-      search, districts, departments, stages,
-      generatedBy, generatedByUserId,
+      search, districts, departments, stages, generatedBy, generatedByUserId,
     });
 
-    const filename = `admin-report-${datestamp()}.pdf`;
-    res.set({
-      "Content-Type":        "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Content-Length":       buffer.length,
-    });
-    return res.send(buffer);
-
+    sendPdf(res, buffer, `admin-report-${datestamp()}.pdf`);
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message });
+    res.status(500).json({ success: false, message: e.message });
   }
 };
 
 /**
- * GET /pdf/:userId
- * Downloads the project report for a specific user.
+ * GET /pdf/project/:projectId
+ * Single project detailed report
  */
-export const downloadProjectPdfController = async (
-  req: Request,
-  res: Response
-) => {
+export const downloadProjectPdfController = async (req: Request, res: Response) => {
   try {
-    const projectId = String(req.params.projectId);
-
+    const projectId = req.params.projectId as string;
     const generatedByUserId = (req as any).user?.id;
-    const generatedBy = (req as any).user?.username;
+    const generatedBy       = (req as any).user?.username;
 
-    const buffer = await generateProjectPdfUsecase({
-      projectId,
-      generatedBy,
-      generatedByUserId,
-    });
+    const buffer = await generateProjectPdfUsecase({ projectId, generatedBy, generatedByUserId });
 
-    const filename = `project-report-${projectId.slice(
-      0,
-      8
-    )}-${datestamp()}.pdf`;
-
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Content-Length": buffer.length,
-    });
-
-    return res.send(buffer);
+    sendPdf(res, buffer, `project-${projectId.slice(0, 8)}-${datestamp()}.pdf`);
   } catch (e: any) {
-    return res.status(500).json({
-      success: false,
-      message: e.message,
-    });
+    const status = e.message === "Project not found" ? 404 : 500;
+    res.status(status).json({ success: false, message: e.message });
   }
 };
+
+/**
+ * GET /pdf/user/:userId
+ * User-specific project report
+ */
+export const downloadUserPdfController = async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId as string;
+    const generatedByUserId = (req as any).user?.id;
+    const generatedBy       = (req as any).user?.username;
+
+    const buffer = await generateUserPdfUsecase({ userId, generatedBy, generatedByUserId });
+
+    sendPdf(res, buffer, `user-report-${userId.slice(0, 8)}-${datestamp()}.pdf`);
+  } catch (e: any) {
+    const status = e.message === "User not found" ? 404 : 500;
+    res.status(status).json({ success: false, message: e.message });
+  }
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function sendPdf(res: Response, buffer: Buffer, filename: string) {
+  res.set({
+    "Content-Type":        "application/pdf",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Content-Length":       buffer.length,
+  });
+  res.send(buffer);
+}
 
 function parseList(val: string | undefined): string[] | undefined {
   if (!val) return undefined;
@@ -89,40 +88,3 @@ function parseList(val: string | undefined): string[] | undefined {
 function datestamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
-
-export const downloadUserPdfController = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const userId = String(req.params.userId);
-
-    const generatedByUserId = (req as any).user?.id;
-    const generatedBy = (req as any).user?.username;
-
-    const buffer = await generateUserPdfUsecase({
-      userId,
-      generatedBy,
-      generatedByUserId,
-    });
-
-    const filename = `user-report-${userId.slice(
-      0,
-      8
-    )}-${datestamp()}.pdf`;
-
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Content-Length": buffer.length,
-    });
-
-    return res.send(buffer);
-  } catch (e: any) {
-    return res.status(500).json({
-      success: false,
-      message: e.message,
-    });
-  }
-};

@@ -1,3 +1,4 @@
+// src/modules/pdf/pdf.usecase.ts
 import {
   generateAdminPdfService,
   generateUserPdfService,
@@ -5,28 +6,22 @@ import {
 } from "./pdf.service";
 
 export const generateAdminPdfUsecase = async (params: {
-  search?: string;
-  districts?: string[];
-  departments?: string[];
-  stages?: string[];
-  generatedBy?: string;
+  search?:            string;
+  districts?:         string[];
+  departments?:       string[];
+  stages?:            string[];
+  generatedBy?:       string;
   generatedByUserId?: string;
-}) => {
-  return generateAdminPdfService(params);
-};
-
-export const generateUserPdfUsecase = async (params: {
-  userId: string;
-  generatedBy?: string;
-  generatedByUserId?: string;
-}) => {
-  return generateUserPdfService(params);
-};
+}) => generateAdminPdfService(params);
 
 export const generateProjectPdfUsecase = async (params: {
-  projectId: string;
-  generatedBy?: string;
+  projectId:          string;
+  generatedBy?:       string;
   generatedByUserId?: string;
-}) => {
-  return generateProjectPdfService(params);
-};
+}) => generateProjectPdfService(params);
+
+export const generateUserPdfUsecase = async (params: {
+  userId:             string;
+  generatedBy?:       string;
+  generatedByUserId?: string;
+}) => generateUserPdfService(params);
