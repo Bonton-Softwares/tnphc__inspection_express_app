@@ -16,7 +16,15 @@ app.use(express.json());
 app.use("/v1", routes);
 
 app.get("/", (req, res) => {
-  res.send("Server working ✅");
+ 
+    res.status(200).json({
+ 
+        success: true,
+ 
+        message: "API Server Running"
+ 
+    });
+ 
 });
 
 app.listen(PORT, () => {
