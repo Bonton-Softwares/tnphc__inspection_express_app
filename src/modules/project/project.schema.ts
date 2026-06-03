@@ -93,16 +93,12 @@ export const createProjectSchema = Joi.object({
   }),
 
   // ── Step 3: Special Unit (optional) ────────────────────────
-  // When provided, the project is scoped to this special unit
-  // under the given department. districtAccess is NOT required.
   specialUnitId: Joi.string().uuid().optional().allow(null, ""),
 
   // ── Step 4: District access (only when NO special unit) ─────
-  // Required when specialUnitId is absent.
-  // When specialUnitId is present, this field is ignored entirely.
   districtAccess: Joi.when("specialUnitId", {
     is: Joi.string().uuid().exist(),
-    then: Joi.any().strip(), // strip it — not needed for special-unit projects
+    then: Joi.any().strip(),
     otherwise: accessRuleSchema.required().messages({
       "any.required":
         "districtAccess is required when no specialUnitId is provided",
@@ -167,7 +163,7 @@ export const updateProjectSchema = Joi.object({
 
   districtAccess: Joi.when("specialUnitId", {
     is: Joi.string().uuid().exist(),
-    then: Joi.any().strip(), // not needed for special-unit projects
+    then: Joi.any().strip(),
     otherwise: accessRuleSchema.optional(),
   }),
 
@@ -191,6 +187,17 @@ export const updateProjectSchema = Joi.object({
     .optional(),
 
   updatedById: Joi.string().optional().allow(null, ""),
+
+  /**
+   * Mandatory when any department / district / city / special unit /
+   * project access mapping is removed.  Optional otherwise.
+   *
+   * The service layer enforces the conditional-mandatory rule; the schema
+   * only validates that when it is present it is a non-empty string.
+   */
+  changeReason: Joi.string().trim().min(1).optional().allow(null, "").messages({
+    "string.min": "changeReason must not be blank when provided",
+  }),
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -216,7 +223,6 @@ export const getAllProjectsSchema = Joi.object({
   specialUnitId: Joi.string().uuid().optional(),
   userId: Joi.string().uuid().optional(),
 })
-  // departmentId and specialUnitId are mutually exclusive
   .nand("departmentId", "specialUnitId");
 
 export const getProjectByIdSchema = Joi.object({
