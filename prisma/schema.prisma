@@ -32,9 +32,29 @@ model user {
 
   isActive      Boolean  @default(true) @map("is_active")
 
+  sessions user_session[]
+
   @@map("users")
 }
 
+
+
+model user_session {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  userId       String   @db.VarChar(36)
+  user         user     @relation(fields: [userId], references: [id])
+  sessionId    String   @unique @db.VarChar(36)   // also stored in JWT
+  ipAddress    String?  @db.VarChar(45)
+  userAgent    String?  @db.Text
+  isActive     Boolean  @default(true) @map("is_active")
+  lastActivity DateTime @default(now()) @map("last_activity")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("user_sessions")
+}
 
 model user_management {
   id              String   @id @default(uuid()) @db.VarChar(36)

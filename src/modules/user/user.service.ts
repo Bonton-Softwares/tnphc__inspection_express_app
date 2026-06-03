@@ -436,9 +436,14 @@ export const deleteUserService = async (id: string, updatedById?: string) => {
 // LOGIN
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// LOGIN  (replace the existing loginService)
+// ─────────────────────────────────────────────────────────────
 export const loginService = async (data: {
   userName: string;
   password: string;
+  ipAddress?: string;
+  userAgent?: string;
 }) => {
   const user = await prisma.user.findFirst({
     where: { username: data.userName, isActive: true },
@@ -453,16 +458,14 @@ export const loginService = async (data: {
 
   if (!user) throw new Error("Invalid credentials");
 
-  let isMatch = false;
-  if (user.passwordHash && user.passwordHash.trim() !== "") {
-    isMatch = await bcrypt.compare(data.password, user.passwordHash);
-  } else {
+  if (!user.passwordHash || user.passwordHash.trim() === "") {
     throw new Error("Invalid credentials");
   }
 
+  const isMatch = await bcrypt.compare(data.password, user.passwordHash);
   if (!isMatch) throw new Error("Invalid credentials");
 
-  const { accessToken, refreshToken } = generateTokens({
+  const { accessToken, refreshToken, sessionId } = generateTokens({
     id: user.id,
     email: user.email,
     userName: user.username,
@@ -470,6 +473,24 @@ export const loginService = async (data: {
     role: user.role?.name,
     isActive: user.isActive,
   });
+
+  // Invalidate any existing active sessions, then create the new one
+  await prisma.$transaction([
+    prisma.user_session.updateMany({
+      where: { userId: user.id, isActive: true },
+      data: { isActive: false },
+    }),
+    prisma.user_session.create({
+      data: {
+        userId: user.id,
+        sessionId,
+        ipAddress: data.ipAddress ?? null,
+        userAgent: data.userAgent ?? null,
+        isActive: true,
+        lastActivity: new Date(),
+      },
+    }),
+  ]);
 
   return {
     user: {
@@ -482,6 +503,16 @@ export const loginService = async (data: {
     accessToken,
     refreshToken,
   };
+};
+
+// ─────────────────────────────────────────────────────────────
+// LOGOUT  (new — call from controller on POST /logout)
+// ─────────────────────────────────────────────────────────────
+export const logoutService = async (sessionId: string) => {
+  await prisma.user_session.updateMany({
+    where: { sessionId, isActive: true },
+    data: { isActive: false },
+  });
 };
 
 // ─────────────────────────────────────────────────────────────
