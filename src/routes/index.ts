@@ -12,7 +12,7 @@ import departmentRoutes from "../modules/department/department.routes";
 import materialRoutes from "../modules/material/material.routes";
 import brandRoutes from "../modules/brand/brand.routes";
 import gradeRoutes from "../modules/grade/grade.routes";
-// import masterRoutes from "../modules/master/master.routes";
+
 import preConstructionRoutes from "../modules/PreConstructionStage/PreConstruction.routes";
 import foundationProgressRoutes from "../modules/FoundationProgress/FoundationProgress.routes";
 import foundationQualityCheckRoutes from "../modules/FoundationQualityCheck/FoundationQualityCheck.route";
@@ -47,7 +47,7 @@ router.use("/land-site-inspections",baseAuth, landSiteInspectionRoutes);
 router.use("/materials",baseAuth,materialRoutes); 
 router.use("/grades",baseAuth,gradeRoutes); 
 router.use("/brands",baseAuth,brandRoutes); 
-// router.use("/master",baseAuth,masterRoutes);
+
 router.use("/pre-construction", baseAuth, preConstructionRoutes);
 router.use("/foundation-progress", baseAuth, foundationProgressRoutes);
 router.use("/foundation-quality-check", baseAuth, foundationQualityCheckRoutes); 

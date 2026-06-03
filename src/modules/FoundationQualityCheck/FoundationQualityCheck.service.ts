@@ -73,7 +73,7 @@ export const getAllFoundationCombinedDB = async () => {
   return projects.map((p) => ({
     projectId: p.id,
     projectName: p.projectName,
-    locationName: p.locationName,
+    locationName: p.location,
     foundationProgress: p.foundationProgresses,
     foundationQualityCheck: p.foundationQualityChecks
   }));
