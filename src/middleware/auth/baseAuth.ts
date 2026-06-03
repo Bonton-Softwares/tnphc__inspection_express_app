@@ -48,26 +48,31 @@ export const baseAuth = async (
     );
   }
 
-  // ── Session check (the only new logic) ────────────────────
-  const session = await prisma.user_session
-    .findUnique({ where: { sessionId: decoded.sessionId } })
-    .catch(() => null);
+  const role = decoded.data?.role?.toUpperCase();
+  const isAdmin = role === "ADMIN";
 
-  if (!session || !session.isActive) {
-    return res.status(401).json({
-      success: false,
-      message:
-        "Your account is logged in on another device. Please logout and login again.",
-    });
+  if (!isAdmin) {
+    // ── Session check (only for non-admin roles) ───────────
+    const session = await prisma.user_session
+      .findUnique({ where: { sessionId: decoded.sessionId } })
+      .catch(() => null);
+
+    if (!session || !session.isActive) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Your account is logged in on another device. Please logout and login again.",
+      });
+    }
+
+    // Fire-and-forget last activity update
+    prisma.user_session
+      .update({
+        where: { sessionId: decoded.sessionId },
+        data: { lastActivity: new Date() },
+      })
+      .catch(() => {});
   }
-
-  // Update last activity (fire-and-forget — don't await to keep latency low)
-  prisma.user_session
-    .update({
-      where: { sessionId: decoded.sessionId },
-      data: { lastActivity: new Date() },
-    })
-    .catch(() => {});
 
   req.user = {
     id: decoded.data.uid,
@@ -76,7 +81,7 @@ export const baseAuth = async (
     roleId: decoded.data.roleId,
     role: decoded.data.role,
     isActive: decoded.data.isActive,
-    sessionId: decoded.sessionId, // available to controllers if needed
+    sessionId: decoded.sessionId,
   };
 
   next();

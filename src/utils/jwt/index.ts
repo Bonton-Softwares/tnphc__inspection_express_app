@@ -12,20 +12,18 @@ const REFRESH_EXPIRY = "30d";
 // ==============================
 // ✅ Generate Access Token
 // ==============================
-export const generateAccessToken = (user: any, sessionId: string) => { // ← ADD sessionId param
+export const generateAccessToken = (user: any, sessionId: string) => {
   const payload = {
     data: {
       uid: user.id,
       email: user.email || null,
       userName: user.userName || null,
-
       roleId: user.roleId || null,
-      role: user.role?.name || null,
-
+      role: user.role || null,        // ← was user.role?.name — fix this
       isActive: user.isActive ?? true
     },
     tokenUse: "access",
-    sessionId // ← ADD
+    sessionId
   };
 
   return jwt.sign(payload, ACCESS_SECRET, {
