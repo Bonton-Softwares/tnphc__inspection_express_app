@@ -50,6 +50,7 @@ type CreateProjectInput = {
 type UpdateProjectInput = Partial<Omit<CreateProjectInput, "createdById">> & {
   status?: string;
   updatedById?: string;
+  changeReason?: string;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -183,13 +184,167 @@ async function createBlocksAndFloors(
 }
 
 /**
- * Deletes all project_block (and cascades to project_floor) for a project.
- * Called inside a transaction before re-creating.
+ * Incrementally upserts blocks and floors for a project during an update.
+ *
+ * Rules:
+ *  - If a block with the same blockName already exists → keep it, only add missing floors.
+ *  - If a block does not exist → create it with all its floors.
+ *  - Never delete any existing block, floor, progress, or quality record.
+ *
+ * Called inside a transaction.
  */
-async function deleteBlocksAndFloors(tx: any, projectId: string): Promise<void> {
-  // Delete floors first (FK constraint), then blocks
-  await tx.project_floor.deleteMany({ where: { projectId } });
-  await tx.project_block.deleteMany({ where: { projectId } });
+async function upsertBlocksAndFloors(
+  tx: any,
+  projectId: string,
+  incomingBlocks: SuperStructureBlock[]
+): Promise<void> {
+  for (const incomingBlock of incomingBlocks) {
+    // ── 1. Look up existing block by name ──────────────────────
+    const existingBlock = await tx.project_block.findUnique({
+      where: {
+        projectId_blockName: {
+          projectId,
+          blockName: incomingBlock.blockName,
+        },
+      },
+      include: {
+        floors: {
+          select: { floorName: true, floorNumber: true },
+        },
+      },
+    });
+
+    if (existingBlock) {
+      // ── 2a. Block exists: only add floors that are missing ───
+      const existingFloorNames = new Set(
+        existingBlock.floors.map((f: { floorName: string }) => f.floorName)
+      );
+
+      // Determine the next floorNumber for new floors
+      const maxExistingFloorNumber = existingBlock.floors.reduce(
+        (max: number, f: { floorNumber: number }) =>
+          f.floorNumber > max ? f.floorNumber : max,
+        0
+      );
+
+      const newFloors = incomingBlock.floors
+        .filter((floorName) => !existingFloorNames.has(floorName))
+        .map((floorName, index) => ({
+          projectId,
+          blockId: existingBlock.id,
+          floorName,
+          floorNumber: maxExistingFloorNumber + index + 1,
+        }));
+
+      if (newFloors.length > 0) {
+        await tx.project_floor.createMany({ data: newFloors });
+
+        // Update totalFloors to reflect the new total
+        const updatedTotalFloors =
+          existingBlock.floors.length + newFloors.length;
+        await tx.project_block.update({
+          where: { id: existingBlock.id },
+          data: { totalFloors: updatedTotalFloors },
+        });
+      }
+    } else {
+      // ── 2b. Block does not exist: create block + all floors ──
+      const newBlock = await tx.project_block.create({
+        data: {
+          projectId,
+          blockName: incomingBlock.blockName,
+          totalFloors: incomingBlock.totalFloors,
+        },
+      });
+
+      await tx.project_floor.createMany({
+        data: incomingBlock.floors.map((floorName, index) => ({
+          projectId,
+          blockId: newBlock.id,
+          floorName,
+          floorNumber: index + 1,
+        })),
+      });
+    }
+  }
+}
+
+/**
+ * Detects whether any access (department / district / city / special unit /
+ * project_access_mapping) has been removed compared to the current project state.
+ *
+ * Returns true when at least one item was removed and remarks are therefore
+ * mandatory.
+ */
+async function detectAccessRemoval(
+  tx: any,
+  projectId: string,
+  data: UpdateProjectInput,
+  existing: any
+): Promise<boolean> {
+  // ── Department changed ────────────────────────────────────
+  if (
+    data.departmentId !== undefined &&
+    data.departmentId !== existing.departmentId
+  ) {
+    return true;
+  }
+
+  // ── Special-unit removed (had one, now being cleared) ─────
+  const wasSpecialUnit = existing.jurisdictionType === "SPECIAL_UNIT";
+  const specialUnitBeingRemoved =
+    data.specialUnitId !== undefined &&
+    !data.specialUnitId &&
+    wasSpecialUnit;
+
+  if (specialUnitBeingRemoved) return true;
+
+  // ── Special-unit swapped for a different one ──────────────
+  if (wasSpecialUnit && data.specialUnitId !== undefined && data.specialUnitId) {
+    const existingMapping = await tx.project_access_mapping.findFirst({
+      where: { projectId, isActive: true, specialUnitId: { not: null } },
+      select: { specialUnitId: true },
+    });
+    if (
+      existingMapping &&
+      existingMapping.specialUnitId !== data.specialUnitId
+    ) {
+      return true;
+    }
+  }
+
+  // ── District/city access changed ──────────────────────────
+  if (!wasSpecialUnit && data.districtAccess !== undefined) {
+    const existingMappings: { districtId: string }[] =
+      await tx.project_access_mapping.findMany({
+        where: { projectId, isActive: true, districtId: { not: null } },
+        select: { districtId: true },
+      });
+
+    const existingDistrictIds = new Set<string>(
+      existingMappings.map((m) => m.districtId)
+    );
+
+    // FULL_JURISDICTION replacing SPECIFIC removes all districts
+    if (
+      existing.accessType === "SPECIFIC" &&
+      data.districtAccess.accessType === "FULL_JURISDICTION"
+    ) {
+      if (existingDistrictIds.size > 0) return true;
+    }
+
+    // SPECIFIC replacing SPECIFIC: check for removed entries
+    if (data.districtAccess.accessType === "SPECIFIC") {
+      const incomingDistrictIds = new Set<string>(
+        (data.districtAccess.districts ?? []).map((d) => d.districtId)
+      );
+      for (const existingId of existingDistrictIds) {
+        if (!incomingDistrictIds.has(existingId)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -340,7 +495,6 @@ export const getAllProjectsService = async (query: {
           where: { isActive: true },
           include: { district: true, specialUnit: true },
         },
-        // ── NEW: relational blocks & floors ──────────────────
         blocks: {
           include: {
             floors: {
@@ -372,11 +526,9 @@ export const getAllProjectsService = async (query: {
       accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
       status: p.status,
-      // ── block/floor counts (same field names as before) ─────
       totalBlocks: p.blocks.length,
       totalFloors: p.blocks.reduce((sum, b) => sum + (b.totalFloors ?? 0), 0),
 
-      // District/city access — only for DISTRICT projects
       districtAccess: isSpecialUnit
         ? null
         : {
@@ -390,7 +542,6 @@ export const getAllProjectsService = async (query: {
               })),
           },
 
-      // Special unit access — only for SPECIAL_UNIT projects
       specialUnitAccess: isSpecialUnit && specialUnitMapping
         ? {
             specialUnitId: specialUnitMapping.specialUnitId ?? null,
@@ -398,7 +549,6 @@ export const getAllProjectsService = async (query: {
           }
         : null,
 
-      // ── NEW: block & floor details with IDs ─────────────────
       superStructure: p.blocks.map((b) => ({
         blockId: b.id,
         blockName: b.blockName,
@@ -430,7 +580,6 @@ export const getProjectByIdService = async (id: string) => {
         where: { isActive: true },
         include: { district: true, specialUnit: true },
       },
-      // ── NEW: relational blocks & floors ──────────────────
       blocks: {
         include: {
           floors: {
@@ -468,7 +617,6 @@ export const getProjectByIdService = async (id: string) => {
       ? { id: project.department.id, name: project.department.name }
       : null,
 
-    // Only for DISTRICT projects
     districtAccess: isSpecialUnit
       ? null
       : {
@@ -482,7 +630,6 @@ export const getProjectByIdService = async (id: string) => {
             })),
         },
 
-    // Only for SPECIAL_UNIT projects
     specialUnitAccess: isSpecialUnit && specialUnitMapping
       ? {
           specialUnitId: specialUnitMapping.specialUnitId ?? null,
@@ -490,7 +637,6 @@ export const getProjectByIdService = async (id: string) => {
         }
       : null,
 
-    // ── NEW: block & floor details with IDs + progress ───────
     blocks: project.blocks.map((b) => {
       const completedFloors = b.superStructureProgresses.filter(
         (sp) => sp.status === "COMPLETED"
@@ -544,13 +690,26 @@ export const updateProjectService = async (
       if (!dept) throw new Error("Invalid departmentId");
     }
 
+    // ── 3. Detect access removal and enforce changeReason ─────
+    //
+    // If any department / district / city / special unit / access mapping
+    // is being removed, `changeReason` is mandatory.
+    const accessWasRemoved = await detectAccessRemoval(tx, id, data, existing);
+    if (accessWasRemoved) {
+      if (!data.changeReason || data.changeReason.trim() === "") {
+        throw new Error(
+          "Reason is required when removing department/district/city/special unit access."
+        );
+      }
+    }
+
     // Resolve whether the resulting project is special-unit or district.
     const isSpecialUnit =
       data.specialUnitId !== undefined
         ? !!data.specialUnitId
         : existing.jurisdictionType === "SPECIAL_UNIT";
 
-    // ── 3. Validate special unit ──────────────────────────────
+    // ── 4. Validate special unit ──────────────────────────────
     if (data.specialUnitId) {
       const unit = await tx.specialUnits.findUnique({
         where: { id: data.specialUnitId, isActive: true },
@@ -558,22 +717,102 @@ export const updateProjectService = async (
       if (!unit) throw new Error("Invalid specialUnitId");
     }
 
-    // ── 4. Validate district IDs (only for district projects) ─
+    // ── 5. Validate district IDs (only for district projects) ─
     if (!isSpecialUnit && data.districtAccess) {
       await validateDistrictIds(tx, data.districtAccess);
     }
 
-    // ── 5. Validate stages ────────────────────────────────────
+    // ── 6. Validate stages ────────────────────────────────────
     if (data.stageIds?.length) {
       await validateStages(tx, data.stageIds);
     }
 
-    // ── 6. Validate super-structure ───────────────────────────
-    if (data.hasSuperStructure && data.superStructure?.length) {
+    // ── 7. Merge selectedStages (never remove existing stages) ─
+    //
+    // The incoming stageIds are merged with the existing selectedStages so
+    // that previously completed stage records are never orphaned.
+    let mergedStageIds: string[] | undefined;
+    if (data.stageIds !== undefined) {
+      const existingStageIds: string[] = Array.isArray(existing.selectedStages)
+        ? (existing.selectedStages as string[])
+        : [];
+      const incomingSet = new Set(data.stageIds);
+      // Union: keep all existing, add any new ones
+      const merged = [...existingStageIds];
+      for (const sid of data.stageIds) {
+        if (!merged.includes(sid)) merged.push(sid);
+      }
+      mergedStageIds = merged;
+    }
+
+    // ── 8. Validate super-structure consistency ───────────────
+    //
+    // Resolve the effective hasSuperStructure and selectedStages values
+    // (post-merge) so we can run the cross-field validation rules.
+    const effectiveHasSuperStructure =
+      data.hasSuperStructure !== undefined
+        ? data.hasSuperStructure
+        : existing.hasSuperStructure;
+
+    const effectiveStageIds = mergedStageIds ?? (
+      Array.isArray(existing.selectedStages)
+        ? (existing.selectedStages as string[])
+        : []
+    );
+
+    // Fetch the names of all stages in the merged set so we can check
+    // whether "Super Structure" is among them.
+    const stageRecords = await tx.stage.findMany({
+      where: { id: { in: effectiveStageIds }, isActive: true },
+      select: { id: true, name: true },
+    });
+    const effectiveStageNames = stageRecords.map((s: { name: string }) => s.name);
+    const hasSuperStructureStage = effectiveStageNames.includes("Super Structure");
+
+    // Rule: hasSuperStructure=true requires the "Super Structure" stage selected
+    if (effectiveHasSuperStructure && !hasSuperStructureStage) {
+      throw new Error(
+        "Super Structure stage must be selected when hasSuperStructure is enabled."
+      );
+    }
+
+    // Rule: "Super Structure" stage selected requires hasSuperStructure=true
+    if (hasSuperStructureStage && !effectiveHasSuperStructure) {
+      throw new Error(
+        "hasSuperStructure must be enabled when Super Structure stage is selected."
+      );
+    }
+
+    // Rule: blocks/floors can only exist when both conditions are met
+    const incomingHasBlocks =
+      data.superStructure !== undefined && data.superStructure.length > 0;
+    if (incomingHasBlocks && (!effectiveHasSuperStructure || !hasSuperStructureStage)) {
+      throw new Error(
+        "Blocks and floors can be created only when Super Structure stage is selected."
+      );
+    }
+
+    // Rule: when hasSuperStructure + Super Structure stage, at least one block required
+    if (effectiveHasSuperStructure && hasSuperStructureStage) {
+      // Check: after the update, will there be at least one block?
+      const existingBlockCount = await tx.project_block.count({
+        where: { projectId: id },
+      });
+      const totalBlocksAfterUpdate =
+        existingBlockCount + (data.superStructure?.length ?? 0);
+      if (totalBlocksAfterUpdate === 0) {
+        throw new Error(
+          "At least one block is required when Super Structure stage is selected."
+        );
+      }
+    }
+
+    // Validate incoming block/floor structure
+    if (data.superStructure?.length) {
       validateSuperStructureBlocks(data.superStructure);
     }
 
-    // ── 7. Build update payload ───────────────────────────────
+    // ── 9. Build update payload ───────────────────────────────
     const updatePayload: any = {
       updatedById: data.updatedById ?? null,
     };
@@ -583,8 +822,12 @@ export const updateProjectService = async (
     if (data.location !== undefined) updatePayload.location = data.location;
     if (data.departmentId !== undefined) updatePayload.departmentId = data.departmentId;
     if (data.hasSuperStructure !== undefined) updatePayload.hasSuperStructure = data.hasSuperStructure;
-    if (data.stageIds !== undefined) updatePayload.selectedStages = data.stageIds;
     if (data.status !== undefined) updatePayload.status = data.status;
+
+    // Always write the merged stage list (never a subset of the original)
+    if (mergedStageIds !== undefined) {
+      updatePayload.selectedStages = mergedStageIds;
+    }
 
     // Jurisdiction / accessType
     if (data.specialUnitId !== undefined) {
@@ -597,10 +840,10 @@ export const updateProjectService = async (
       updatePayload.accessType = data.districtAccess.accessType;
     }
 
-    // ── 8. Update project row ─────────────────────────────────
+    // ── 10. Update project row ────────────────────────────────
     await tx.project.update({ where: { id }, data: updatePayload });
 
-    // ── 9. Replace access mappings when jurisdiction changes ──
+    // ── 11. Replace access mappings when jurisdiction changes ──
     const shouldReplaceAccess =
       data.specialUnitId !== undefined || data.districtAccess !== undefined;
 
@@ -625,53 +868,54 @@ export const updateProjectService = async (
       }
     }
 
-    // ── 10. Replace super-structure blocks & floors ───────────
-    if (data.superStructure !== undefined) {
-      // Must delete in FK dependency order:
-      // superStructureQuality → superStructureProgress → interiorsProgress/exteriorsProgress → project_floor → project_block
-
-      // 10a. Delete quality records that reference superStructureProgress rows for this project
-      await tx.superStructureQuality.deleteMany({
-        where: { progress: { projectId: id } },
-      });
-
-      // 10b. Delete interiorsQuality records that reference interiorsProgress rows for this project
-      await tx.interiorsQuality.deleteMany({
-        where: { progress: { projectId: id } },
-      });
-
-      // 10c. Delete exteriorsQuality records that reference exteriorsProgress rows for this project
-      await tx.exteriorsQuality.deleteMany({
-        where: { progress: { projectId: id } },
-      });
-
-      // 10d. Delete progress rows that reference floors for this project
-      await tx.superStructureProgress.deleteMany({ where: { projectId: id } });
-      await tx.interiorsProgress.deleteMany({ where: { projectId: id } });
-      await tx.exteriorsProgress.deleteMany({ where: { projectId: id } });
-
-      // 10e. Now safe to delete floors then blocks
-      await tx.project_floor.deleteMany({ where: { projectId: id } });
-      await tx.project_block.deleteMany({ where: { projectId: id } });
-
-      if (data.hasSuperStructure && data.superStructure.length > 0) {
-        await createBlocksAndFloors(tx, id, data.superStructure);
-      }
+    // ── 12. Incrementally upsert blocks and floors ────────────
+    //
+    // KEY CHANGE: We no longer delete any existing blocks, floors, progress,
+    // or quality records. Instead we only INSERT what is missing.
+    //
+    //  • Existing block with same blockName → keep it, add missing floors only.
+    //  • New block name → create block + all its floors.
+    //  • No existing records are touched or deleted.
+    if (data.superStructure !== undefined && data.superStructure.length > 0) {
+      await upsertBlocksAndFloors(tx, id, data.superStructure);
     }
 
-    // ── 11. Project history ───────────────────────────────────
+    // ── 13. Project history ───────────────────────────────────
     await tx.project_history.create({
       data: {
         projectId: id,
         action: "UPDATE",
         oldValue: existing as any,
         newValue: updatePayload,
+        remarks: data.changeReason ?? null,
         changedById: data.updatedById ?? null,
         createdById: data.updatedById ?? null,
       },
     });
 
-    // ── 12. Return updated project ────────────────────────────
+    // ── 14. Audit log for access removal ─────────────────────
+    if (accessWasRemoved) {
+      await tx.auditLog.create({
+        data: {
+          tableName: "projects",
+          recordId: id,
+          action: "UPDATE",
+          oldValue: {
+            departmentId: existing.departmentId,
+            jurisdictionType: existing.jurisdictionType,
+            accessType: existing.accessType,
+          },
+          newValue: {
+            departmentId: updatePayload.departmentId ?? existing.departmentId,
+            jurisdictionType: updatePayload.jurisdictionType ?? existing.jurisdictionType,
+            accessType: updatePayload.accessType ?? existing.accessType,
+          },
+          userId: data.updatedById ?? null,
+        },
+      });
+    }
+
+    // ── 15. Return updated project ────────────────────────────
     return await tx.project.findUnique({
       where: { id },
       include: {
@@ -703,11 +947,6 @@ export const deleteProjectService = async (id: string) => {
 
     await tx.project.update({ where: { id }, data: { isActive: false } });
     await tx.project_access_mapping.updateMany({ where: { projectId: id }, data: { isActive: false } });
-    // Note: project_block and project_floor do not have isActive — hard delete is fine,
-    // or leave them as-is since the project itself is soft-deleted.
-    // If you want to physically remove them on soft delete, uncomment below:
-    // await tx.project_floor.deleteMany({ where: { projectId: id } });
-    // await tx.project_block.deleteMany({ where: { projectId: id } });
 
     return { message: "Project deleted successfully" };
   });
@@ -735,7 +974,6 @@ export const getProjectsByUserService = async ({
     pageSize: limit,
   } = pageConfig({ pageNumber, pageSize });
 
-  // ── Fetch all active stages for name lookup ─────────────────
   const allStages = await prisma.stage.findMany({
     where: { isActive: true },
     select: { id: true, name: true },
@@ -812,7 +1050,6 @@ export const getProjectsByUserService = async ({
           where: { isActive: true },
           include: { district: true, specialUnit: true },
         },
-        // ── NEW: relational blocks & floors ──────────────────
         blocks: {
           include: {
             floors: {
@@ -828,12 +1065,10 @@ export const getProjectsByUserService = async ({
         foundationProgresses: { where: { isActive: true } },
         foundationQualityChecks: { where: { isActive: true } },
         plinthStages: { where: { isActive: true } },
-        // ── FIX: nest quality inside interiorsProgress ────────
         interiorsProgress: {
           where: { isActive: true },
           include: { quality: true },
         },
-        // ── FIX: nest quality inside exteriorsProgress ────────
         exteriorsProgress: {
           where: { isActive: true },
           include: { quality: true },
@@ -842,7 +1077,6 @@ export const getProjectsByUserService = async ({
         DevelopmentWork: { where: { isActive: true } },
         TakeoverBuildingInsepction: { where: { isActive: true } },
         TakeoverDevelopmentWork: { where: { isActive: true } },
-        // ── FIX: nest quality inside SuperStructureProgress ───
         SuperStructureProgress: {
           where: { isActive: true },
           include: { quality: true },
@@ -873,57 +1107,56 @@ export const getProjectsByUserService = async ({
     if (p.plinthStages.length > 0)
       done.push("Plinth");
 
-    // ── FIX: check nested .quality instead of top-level field ─
     const totalSuperStructureFloors = p.blocks.reduce(
-  (sum, block) => sum + block.totalFloors,
-  0
-);
+      (sum, block) => sum + block.totalFloors,
+      0
+    );
 
-const completedSuperStructureFloors =
-  p.SuperStructureProgress.filter(
-    (sp) => sp.status === "COMPLETED"
-  ).length;
+    const completedSuperStructureFloors =
+      p.SuperStructureProgress.filter(
+        (sp) => sp.status === "COMPLETED"
+      ).length;
 
-if (
-  totalSuperStructureFloors > 0 &&
-  completedSuperStructureFloors === totalSuperStructureFloors
-) {
-  done.push("Super Structure");
-}
+    if (
+      totalSuperStructureFloors > 0 &&
+      completedSuperStructureFloors === totalSuperStructureFloors
+    ) {
+      done.push("Super Structure");
+    }
 
     const totalInteriorFloors = p.blocks.reduce(
-  (sum, block) => sum + block.totalFloors,
-  0
-);
+      (sum, block) => sum + block.totalFloors,
+      0
+    );
 
-const completedInteriorFloors =
-  p.interiorsProgress.filter(
-    (ip) => ip.status === "COMPLETED"
-  ).length;
+    const completedInteriorFloors =
+      p.interiorsProgress.filter(
+        (ip) => ip.status === "COMPLETED"
+      ).length;
 
-if (
-  totalInteriorFloors > 0 &&
-  completedInteriorFloors === totalInteriorFloors
-) {
-  done.push("Interiors");
-}
+    if (
+      totalInteriorFloors > 0 &&
+      completedInteriorFloors === totalInteriorFloors
+    ) {
+      done.push("Interiors");
+    }
 
-  const totalExteriorFloors = p.blocks.reduce(
-  (sum, block) => sum + block.totalFloors,
-  0
-);
+    const totalExteriorFloors = p.blocks.reduce(
+      (sum, block) => sum + block.totalFloors,
+      0
+    );
 
-const completedExteriorFloors =
-  p.exteriorsProgress.filter(
-    (ep) => ep.status === "COMPLETED"
-  ).length;
+    const completedExteriorFloors =
+      p.exteriorsProgress.filter(
+        (ep) => ep.status === "COMPLETED"
+      ).length;
 
-if (
-  totalExteriorFloors > 0 &&
-  completedExteriorFloors === totalExteriorFloors
-) {
-  done.push("Exteriors");
-}
+    if (
+      totalExteriorFloors > 0 &&
+      completedExteriorFloors === totalExteriorFloors
+    ) {
+      done.push("Exteriors");
+    }
 
     if (p.BuildingInspection.length > 0)
       done.push("Building Inspection");
@@ -1033,7 +1266,6 @@ if (
       completedStageNames,
       pendingStages,
 
-      // ── NEW: block & floor details with IDs + progress ─────
       superStructure: p.blocks.map((b) => {
         const completedFloors = b.superStructureProgresses.filter(
           (sp) => sp.status === "COMPLETED"
@@ -1154,57 +1386,55 @@ export const getProjectDashboardService = async (userId?: string) => {
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
+
     const totalSuperStructureFloors = await prisma.project_floor.count({
-  where: {
-    projectId: p.id
-  }
-});
+      where: { projectId: p.id },
+    });
 
-const completedSuperStructureFloors =
-  p.SuperStructureProgress.filter(
-    (sp) => sp.status === "COMPLETED"
-  ).length;
+    const completedSuperStructureFloors =
+      p.SuperStructureProgress.filter(
+        (sp) => sp.status === "COMPLETED"
+      ).length;
 
-if (
-  totalSuperStructureFloors > 0 &&
-  completedSuperStructureFloors === totalSuperStructureFloors
-) {
-  done.push("Super Structure");
-}
-   const totalInteriorFloors = await prisma.project_floor.count({
-  where: {
-    projectId: p.id
-  }
-});
+    if (
+      totalSuperStructureFloors > 0 &&
+      completedSuperStructureFloors === totalSuperStructureFloors
+    ) {
+      done.push("Super Structure");
+    }
 
-const completedInteriorFloors =
-  p.interiorsProgress.filter(
-    (ip) => ip.status === "COMPLETED"
-  ).length;
+    const totalInteriorFloors = await prisma.project_floor.count({
+      where: { projectId: p.id },
+    });
 
-if (
-  totalInteriorFloors > 0 &&
-  completedInteriorFloors === totalInteriorFloors
-) {
-  done.push("Interiors");
-}
-const totalExteriorFloors = await prisma.project_floor.count({
-  where: {
-    projectId: p.id
-  }
-});
+    const completedInteriorFloors =
+      p.interiorsProgress.filter(
+        (ip) => ip.status === "COMPLETED"
+      ).length;
 
-const completedExteriorFloors =
-  p.exteriorsProgress.filter(
-    (ep) => ep.status === "COMPLETED"
-  ).length;
+    if (
+      totalInteriorFloors > 0 &&
+      completedInteriorFloors === totalInteriorFloors
+    ) {
+      done.push("Interiors");
+    }
 
-if (
-  totalExteriorFloors > 0 &&
-  completedExteriorFloors === totalExteriorFloors
-) {
-  done.push("Exteriors");
-}
+    const totalExteriorFloors = await prisma.project_floor.count({
+      where: { projectId: p.id },
+    });
+
+    const completedExteriorFloors =
+      p.exteriorsProgress.filter(
+        (ep) => ep.status === "COMPLETED"
+      ).length;
+
+    if (
+      totalExteriorFloors > 0 &&
+      completedExteriorFloors === totalExteriorFloors
+    ) {
+      done.push("Exteriors");
+    }
+
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
     if (p.DevelopmentWork.length > 0) done.push("Development Work");
     if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
