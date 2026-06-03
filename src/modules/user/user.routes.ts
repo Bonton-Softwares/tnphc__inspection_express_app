@@ -24,6 +24,7 @@ import {
   updateParamsSchema,
   updateUserSchema,
 } from "./user.schema";
+import prisma from "../../shared/prisma";
 
 const router = Router();
 
@@ -69,4 +70,30 @@ router.get("/dropdowns/departments", getDepartments);
 router.get("/dropdowns/masterDistricts", getMasterDistricts); // ?type=DISTRICT|CITY
 router.get("/dropdowns/specialUnits", getSpecialUnits);
 
+
+
+
+router.get("/health", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+
+    return res.status(200).json({
+      success: true,
+      status: "UP",
+      database: "CONNECTED",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  } catch (error) {
+    return res.status(503).json({
+      success: false,
+      status: "DOWN",
+      database: "DISCONNECTED",
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 export default router;
+
+
