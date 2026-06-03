@@ -7,11 +7,13 @@ import {
   updateUserUsecase,
   deleteUserUsecase,
   loginUsecase,
+  logoutUsecase,          // ← ADD
   getDepartmentsUsecase,
   getMasterDistrictsUsecase,
   getRolesUsecase,
   getSpecialUnitsUsecase,
 } from "./user.usecase";
+import responses from "../../utils/responses";
 
 // ─── RESPONSE HELPERS ────────────────────────────────────────
 
@@ -89,15 +91,23 @@ export const deleteUser = async (
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const result = await loginUsecase(req.body);
-    ok(res, result);
-  } catch (e: any) {
-    // Always return 401 with a generic message for login failures
-    // to avoid leaking whether username or password was wrong
-    res.status(401).json({
-      success: false,
-      message: "Invalid credentials",
+    const result = await loginUsecase({  // ← loginUsecase not loginService
+      ...req.body,
+      ipAddress: req.ip ?? req.headers["x-forwarded-for"]?.toString(),
+      userAgent: req.headers["user-agent"],
     });
+    ok(res, result);
+  } catch (err: any) {
+    fail(res, err);
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    await logoutUsecase(req.user.sessionId);  // ← logoutUsecase not logoutService
+    ok(res, { message: "Logged out" });
+  } catch (err: any) {
+    fail(res, err, 500);
   }
 };
 
@@ -113,7 +123,6 @@ export const getDepartments = async (_req: Request, res: Response) => {
 
 export const getMasterDistricts = async (req: Request, res: Response) => {
   try {
-    // ?type=DISTRICT or ?type=CITY or no filter = both
     const type = req.query.type as "DISTRICT" | "CITY" | undefined;
     ok(res, await getMasterDistrictsUsecase(type));
   } catch (e) {

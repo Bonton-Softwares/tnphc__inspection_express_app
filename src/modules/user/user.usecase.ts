@@ -6,6 +6,7 @@ import {
   updateUserService,
   deleteUserService,
   loginService,
+  logoutService,          // ← ADD
   getDepartmentsService,
   getMasterDistrictsService,
   getRolesService,
@@ -32,6 +33,9 @@ export const deleteUserUsecase = async (id: string, updatedById?: string) =>
 
 export const loginUsecase = async (data: any) =>
   loginService(data);
+
+export const logoutUsecase = async (sessionId: string) =>  // ← ADD
+  logoutService(sessionId);
 
 export const getDepartmentsUsecase = async () =>
   getDepartmentsService();

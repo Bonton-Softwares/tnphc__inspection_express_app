@@ -11,8 +11,10 @@ import {
   getMasterDistricts,
   getRoles,
   getSpecialUnits,
+  logout,          // ← ADD
 } from "./user.controller";
 import { validateRequest } from "../../middleware";
+import { baseAuth } from "../../middleware/auth/baseAuth";
 import {
   createUserSchema,
   deleteUserSchema,
@@ -27,6 +29,7 @@ const router = Router();
 
 // ── AUTH ──────────────────────────────────────────────────────
 router.post("/login", validateRequest(loginUserSchema, "body"), login);
+router.post("/logout", baseAuth, logout);
 
 // ── USERS ─────────────────────────────────────────────────────
 router.get(

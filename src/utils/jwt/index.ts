@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { v4 as uuidv4 } from "uuid"; // ← ADD
 
 // 🔐 Secrets
 const ACCESS_SECRET = process.env.JWT_SECRET as string;
@@ -11,7 +12,7 @@ const REFRESH_EXPIRY = "30d";
 // ==============================
 // ✅ Generate Access Token
 // ==============================
-export const generateAccessToken = (user: any) => {
+export const generateAccessToken = (user: any, sessionId: string) => { // ← ADD sessionId param
   const payload = {
     data: {
       uid: user.id,
@@ -23,7 +24,8 @@ export const generateAccessToken = (user: any) => {
 
       isActive: user.isActive ?? true
     },
-    tokenUse: "access"
+    tokenUse: "access",
+    sessionId // ← ADD
   };
 
   return jwt.sign(payload, ACCESS_SECRET, {
@@ -34,12 +36,13 @@ export const generateAccessToken = (user: any) => {
 // ==============================
 // ✅ Generate Refresh Token
 // ==============================
-export const generateRefreshToken = (user: any) => {
+export const generateRefreshToken = (user: any, sessionId: string) => { // ← ADD sessionId param
   const payload = {
     data: {
       uid: user.id
     },
-    tokenUse: "refresh"
+    tokenUse: "refresh",
+    sessionId // ← ADD
   };
 
   return jwt.sign(payload, REFRESH_SECRET, {
@@ -51,12 +54,15 @@ export const generateRefreshToken = (user: any) => {
 // ✅ Generate BOTH tokens (LOGIN)
 // ==============================
 export const generateTokens = (user: any) => {
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+  const sessionId = uuidv4(); // ← ADD: one ID shared by both tokens
+
+  const accessToken = generateAccessToken(user, sessionId); // ← pass sessionId
+  const refreshToken = generateRefreshToken(user, sessionId); // ← pass sessionId
 
   return {
     accessToken,
-    refreshToken
+    refreshToken,
+    sessionId // ← ADD: returned so loginService can store it in DB
   };
 };
 
@@ -100,7 +106,8 @@ export const verifyRefreshToken = (token: string) => {
 export const generateAccessTokenFromRefresh = (refreshToken: string) => {
   const decoded: any = verifyRefreshToken(refreshToken);
 
-  return generateAccessToken({
-    id: decoded.data.uid
-  });
+  return generateAccessToken(
+    { id: decoded.data.uid },
+    decoded.sessionId // ← pass existing sessionId so the refreshed token stays linked to the same session
+  );
 };
