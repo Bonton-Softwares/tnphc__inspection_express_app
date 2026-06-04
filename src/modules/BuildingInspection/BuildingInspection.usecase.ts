@@ -22,6 +22,8 @@ export const createBuildingInspectionUsecase = async (
   userId?: string
 ) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const roleId = req.user?.roleId;
+  const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();
 
   const getFiles = (field: string) =>
     (files?.[field] || []).map((file: any) => ({
@@ -31,8 +33,6 @@ export const createBuildingInspectionUsecase = async (
 
   const data = {
     projectId: body.projectId,
-
-    // ── STRUCTURE ──────────────────────────────────────────────────────────
     structure: {
       alignment:          toBool(body.structureAlignment),
       alignmentPhoto:     getFiles("structureAlignmentPhoto"),
@@ -47,8 +47,6 @@ export const createBuildingInspectionUsecase = async (
       aggregateReport:    getFiles("structureAggregateReport"),
       bricksReport:       getFiles("structureBricksReport")
     },
-
-    // ── PAINTING ───────────────────────────────────────────────────────────
     painting: {
       isQualityOk:  toBool(body.paintingIsQualityOk),
       defectPhoto:  getFiles("paintingDefectPhoto"),
@@ -56,8 +54,6 @@ export const createBuildingInspectionUsecase = async (
       defectReport: body.paintingDefectReport || null,
       remarks:      body.paintingRemarks      || null
     },
-
-    // ── TILING & FLOORING ──────────────────────────────────────────────────
     tilingFlooring: {
       isQualityOk:  toBool(body.tilingIsQualityOk),
       defectPhoto:  getFiles("tilingDefectPhoto"),
@@ -65,8 +61,6 @@ export const createBuildingInspectionUsecase = async (
       defectReport: body.tilingDefectReport || null,
       remarks:      body.tilingRemarks      || null
     },
-
-    // ── FALSE CEILING ──────────────────────────────────────────────────────
     falseCeiling: {
       isQualityOk:  toBool(body.falseCeilingIsQualityOk),
       defectPhoto:  getFiles("falseCeilingDefectPhoto"),
@@ -74,8 +68,6 @@ export const createBuildingInspectionUsecase = async (
       defectReport: body.falseCeilingDefectReport || null,
       remarks:      body.falseCeilingRemarks      || null
     },
-
-    // ── PLUMBING SYSTEM ────────────────────────────────────────────────────
     plumbingSystem: {
       waterSupply: {
         isWorking:    toBool(body.plumbingWaterSupply),
@@ -91,8 +83,6 @@ export const createBuildingInspectionUsecase = async (
       },
       remarks: body.plumbingRemarks || null
     },
-
-    // ── ELECTRICAL SYSTEM ──────────────────────────────────────────────────
     electricalSystem: {
       switchQuality: {
         isOk:        toBool(body.electricalSwitchQuality),
@@ -120,8 +110,6 @@ export const createBuildingInspectionUsecase = async (
       },
       remarks: body.electricalRemarks || null
     },
-
-    // ── DOORS & WINDOWS ────────────────────────────────────────────────────
     doorsWindows: {
       quality: {
         isOk:        toBool(body.dwQuality),
@@ -135,24 +123,22 @@ export const createBuildingInspectionUsecase = async (
       },
       remarks: body.dwRemarks || null
     },
-
-    // ── LIFTS ──────────────────────────────────────────────────────────────
-    lifts: {
-      working: {
-        isWorking:   toBool(body.liftWorking),
-        remarks:     body.liftWorkingRemarks || null,
-        defectPhoto: getFiles("liftWorkingPhoto")
-      },
-      safety: {
-        isWorking:   toBool(body.liftSafety),
-        remarks:     body.liftSafetyRemarks || null,
-        defectPhoto: getFiles("liftSafetyPhoto")
-      },
-      remarks: body.liftRemarks || null
-    },
-
-    // ── FIRE FIGHTING SYSTEM ───────────────────────────────────────────────
+   lifts: {
+  working: {
+    isWorking:   toBool(body.liftWorking),
+    remarks:     body.liftWorkingRemarks || null,
+    defectPhoto: getFiles("liftWorkingPhoto")
+  },
+  safety: {
+    isWorking:   toBool(body.liftSafety),
+    remarks:     body.liftSafetyRemarks || null,
+    defectPhoto: getFiles("liftSafetyPhoto")
+  },
+  certificatePhoto: getFiles("liftCertificatePhoto"), // ← ADD
+  remarks: body.liftRemarks || null
+},
     fireFightingSystem: {
+      // ── multiselect: always store as array ─────────────────
       systems: Array.isArray(body.fireSystems)
         ? body.fireSystems
         : body.fireSystems
@@ -160,8 +146,6 @@ export const createBuildingInspectionUsecase = async (
         : [],
       remarks: body.fireRemarks || null
     },
-
-    // ── TERRACE INSPECTION ─────────────────────────────────────────────────
     terraceInspection: {
       roofTiles: {
         isProper:    toBool(body.terraceRoofTiles),
@@ -186,32 +170,13 @@ export const createBuildingInspectionUsecase = async (
       },
       remarks: body.terraceRemarks || null
     },
-
     createdById: userId
   };
 
-  return createBuildingInspectionDB(data);
+  // ── upsert logic is now inside the DB layer ───────────────
+  return createBuildingInspectionDB(data, userId, roleId, ipAddress);
 };
 
-// ─── GET ALL ──────────────────────────────────────────────────────────────
-export const getAllBuildingInspectionUsecase = async (projectId: string) => {
-  return getAllBuildingInspectionDB(projectId);
-};
-
-// ─── GET LATEST BY PROJECT ID ─────────────────────────────────────────────
-export const getBuildingInspectionByProjectIdUsecase = async (
-  projectId: string
-) => {
-  const data = await getBuildingInspectionByProjectIdDB(projectId);
-
-  if (!data || data.length === 0) {
-    throw new Error("Building inspection record not found");
-  }
-
-  return data[0]; // return the single latest record (not an array)
-};
-
-// ─── UPDATE ───────────────────────────────────────────────────────────────
 export const updateBuildingInspectionUsecase = async (
   id: string,
   body: any,
@@ -220,6 +185,8 @@ export const updateBuildingInspectionUsecase = async (
   userId?: string
 ) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const roleId = req.user?.roleId;
+  const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();
 
   const getFiles = (field: string) =>
     (files?.[field] || []).map((file: any) => ({
@@ -233,14 +200,11 @@ export const updateBuildingInspectionUsecase = async (
 
   const data: any = { updatedById: userId };
 
-  // ── STRUCTURE ────────────────────────────────────────────────────────────
   if (
     hasAny("structureAlignment", "structureLocation", "structureDefectReport", "structureRemarks") ||
-    hasFiles(
-      "structureAlignmentPhoto", "structureConcreteCubeReport", "structureCementReport",
+    hasFiles("structureAlignmentPhoto", "structureConcreteCubeReport", "structureCementReport",
       "structureSteelReport", "structureWaterReport", "structureSandReport",
-      "structureAggregateReport", "structureBricksReport"
-    )
+      "structureAggregateReport", "structureBricksReport")
   ) {
     data.structure = {
       ...(body.structureAlignment    !== undefined && { alignment:    toBool(body.structureAlignment) }),
@@ -258,7 +222,6 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── PAINTING ─────────────────────────────────────────────────────────────
   if (
     hasAny("paintingIsQualityOk", "paintingLocation", "paintingDefectReport", "paintingRemarks") ||
     hasFiles("paintingDefectPhoto")
@@ -272,7 +235,6 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── TILING & FLOORING ────────────────────────────────────────────────────
   if (
     hasAny("tilingIsQualityOk", "tilingLocation", "tilingDefectReport", "tilingRemarks") ||
     hasFiles("tilingDefectPhoto")
@@ -286,7 +248,6 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── FALSE CEILING ────────────────────────────────────────────────────────
   if (
     hasAny("falseCeilingIsQualityOk", "falseCeilingLocation", "falseCeilingDefectReport", "falseCeilingRemarks") ||
     hasFiles("falseCeilingDefectPhoto")
@@ -300,13 +261,9 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── PLUMBING SYSTEM ──────────────────────────────────────────────────────
   if (
-    hasAny(
-      "plumbingWaterSupply", "plumbingWaterSupplyLocation", "plumbingWaterSupplyDefect",
-      "plumbingLeakage",     "plumbingLeakageLocation",     "plumbingLeakageDefect",
-      "plumbingRemarks"
-    ) ||
+    hasAny("plumbingWaterSupply", "plumbingWaterSupplyLocation", "plumbingWaterSupplyDefect",
+      "plumbingLeakage", "plumbingLeakageLocation", "plumbingLeakageDefect", "plumbingRemarks") ||
     hasFiles("plumbingWaterSupplyPhoto", "plumbingLeakagePhoto")
   ) {
     data.plumbingSystem = {
@@ -326,19 +283,12 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── ELECTRICAL SYSTEM ────────────────────────────────────────────────────
   if (
-    hasAny(
-      "electricalSwitchQuality", "electricalSwitchRemarks",
-      "electricalPowerSupply",   "electricalPowerRemarks",
-      "electricalVoltage",       "electricalVoltageRemarks",
-      "electricalEarthingTest",  "electricalEarthingProper",
-      "electricalELCB",          "electricalRemarks"
-    ) ||
-    hasFiles(
-      "electricalSwitchPhoto", "electricalPowerPhoto", "electricalVoltagePhoto",
-      "electricalEarthingPhoto", "electricalELCBPhoto"
-    )
+    hasAny("electricalSwitchQuality", "electricalSwitchRemarks", "electricalPowerSupply",
+      "electricalPowerRemarks", "electricalVoltage", "electricalVoltageRemarks",
+      "electricalEarthingTest", "electricalEarthingProper", "electricalELCB", "electricalRemarks") ||
+    hasFiles("electricalSwitchPhoto", "electricalPowerPhoto", "electricalVoltagePhoto",
+      "electricalEarthingPhoto", "electricalELCBPhoto")
   ) {
     data.electricalSystem = {
       switchQuality: {
@@ -369,7 +319,6 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── DOORS & WINDOWS ──────────────────────────────────────────────────────
   if (
     hasAny("dwQuality", "dwQualityRemarks", "dwOperation", "dwOperationRemarks", "dwRemarks") ||
     hasFiles("dwQualityPhoto", "dwOperationPhoto")
@@ -389,29 +338,29 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── LIFTS ─────────────────────────────────────────────────────────────────
   if (
-    hasAny("liftWorking", "liftWorkingRemarks", "liftSafety", "liftSafetyRemarks", "liftRemarks") ||
-    hasFiles("liftWorkingPhoto", "liftSafetyPhoto")
-  ) {
-    data.lifts = {
-      working: {
-        ...(body.liftWorking        !== undefined && { isWorking:   toBool(body.liftWorking) }),
-        ...(body.liftWorkingRemarks !== undefined && { remarks:     body.liftWorkingRemarks || null }),
-        ...(hasFiles("liftWorkingPhoto")          && { defectPhoto: getFiles("liftWorkingPhoto") })
-      },
-      safety: {
-        ...(body.liftSafety        !== undefined && { isWorking:   toBool(body.liftSafety) }),
-        ...(body.liftSafetyRemarks !== undefined && { remarks:     body.liftSafetyRemarks || null }),
-        ...(hasFiles("liftSafetyPhoto")          && { defectPhoto: getFiles("liftSafetyPhoto") })
-      },
-      ...(body.liftRemarks !== undefined && { remarks: body.liftRemarks || null })
-    };
-  }
+  hasAny("liftWorking", "liftWorkingRemarks", "liftSafety", "liftSafetyRemarks", "liftRemarks") ||
+  hasFiles("liftWorkingPhoto", "liftSafetyPhoto", "liftCertificatePhoto") // ← ADD liftCertificatePhoto
+) {
+  data.lifts = {
+    working: {
+      ...(body.liftWorking        !== undefined && { isWorking:   toBool(body.liftWorking) }),
+      ...(body.liftWorkingRemarks !== undefined && { remarks:     body.liftWorkingRemarks || null }),
+      ...(hasFiles("liftWorkingPhoto")          && { defectPhoto: getFiles("liftWorkingPhoto") })
+    },
+    safety: {
+      ...(body.liftSafety        !== undefined && { isWorking:   toBool(body.liftSafety) }),
+      ...(body.liftSafetyRemarks !== undefined && { remarks:     body.liftSafetyRemarks || null }),
+      ...(hasFiles("liftSafetyPhoto")          && { defectPhoto: getFiles("liftSafetyPhoto") })
+    },
+    ...(hasFiles("liftCertificatePhoto") && { certificatePhoto: getFiles("liftCertificatePhoto") }), // ← ADD
+    ...(body.liftRemarks !== undefined && { remarks: body.liftRemarks || null })
+  };
+}
 
-  // ── FIRE FIGHTING SYSTEM ──────────────────────────────────────────────────
   if (body.fireSystems !== undefined || body.fireRemarks !== undefined) {
     data.fireFightingSystem = {
+      // ── multiselect: always store as array ─────────────────
       ...(body.fireSystems !== undefined && {
         systems: Array.isArray(body.fireSystems)
           ? body.fireSystems
@@ -423,19 +372,11 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  // ── TERRACE INSPECTION ────────────────────────────────────────────────────
   if (
-    hasAny(
-      "terraceRoofTiles", "terraceRoofTilesRemarks",
-      "terraceDrainage",  "terraceDrainageRemarks",
-      "terraceLeakageTest", "terraceLeakageRemarks",
-      "terraceTestDate",  "terraceConductedBy",
-      "terraceRemarks"
-    ) ||
-    hasFiles(
-      "terraceRoofTilesPhoto", "terraceDrainagePhoto",
-      "terraceWaterproofingReport", "terraceLeakagePhoto", "terraceLeakageResultPhoto"
-    )
+    hasAny("terraceRoofTiles", "terraceRoofTilesRemarks", "terraceDrainage", "terraceDrainageRemarks",
+      "terraceLeakageTest", "terraceLeakageRemarks", "terraceTestDate", "terraceConductedBy", "terraceRemarks") ||
+    hasFiles("terraceRoofTilesPhoto", "terraceDrainagePhoto", "terraceWaterproofingReport",
+      "terraceLeakagePhoto", "terraceLeakageResultPhoto")
   ) {
     data.terraceInspection = {
       roofTiles: {
@@ -452,10 +393,10 @@ export const updateBuildingInspectionUsecase = async (
         ...(hasFiles("terraceWaterproofingReport") && { labReport: getFiles("terraceWaterproofingReport") })
       },
       leakageTest: {
-        ...(body.terraceLeakageTest    !== undefined && { isDone:       toBool(body.terraceLeakageTest) }),
-        ...(body.terraceLeakageRemarks !== undefined && { remarks:      body.terraceLeakageRemarks || null }),
-        ...(body.terraceTestDate       !== undefined && { testDate:     body.terraceTestDate ? new Date(body.terraceTestDate) : null }),
-        ...(body.terraceConductedBy    !== undefined && { conductedBy:  body.terraceConductedBy || null }),
+        ...(body.terraceLeakageTest    !== undefined && { isDone:      toBool(body.terraceLeakageTest) }),
+        ...(body.terraceLeakageRemarks !== undefined && { remarks:     body.terraceLeakageRemarks || null }),
+        ...(body.terraceTestDate       !== undefined && { testDate:    body.terraceTestDate ? new Date(body.terraceTestDate) : null }),
+        ...(body.terraceConductedBy    !== undefined && { conductedBy: body.terraceConductedBy || null }),
         ...(hasFiles("terraceLeakagePhoto")       && { defectPhoto: getFiles("terraceLeakagePhoto") }),
         ...(hasFiles("terraceLeakageResultPhoto") && { resultPhoto: getFiles("terraceLeakageResultPhoto") })
       },
@@ -463,8 +404,29 @@ export const updateBuildingInspectionUsecase = async (
     };
   }
 
-  return updateBuildingInspectionDB(id, data);
+  return updateBuildingInspectionDB(id, data, userId, roleId, ipAddress);
 };
+
+// ─── GET ALL ──────────────────────────────────────────────────────────────
+export const getAllBuildingInspectionUsecase = async (projectId: string) => {
+  return getAllBuildingInspectionDB(projectId);
+};
+
+// ─── GET LATEST BY PROJECT ID ─────────────────────────────────────────────
+export const getBuildingInspectionByProjectIdUsecase = async (
+  projectId: string
+) => {
+  const data = await getBuildingInspectionByProjectIdDB(projectId);
+
+  if (!data || data.length === 0) {
+    throw new Error("Building inspection record not found");
+  }
+
+  return data[0]; // return the single latest record (not an array)
+};
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────
+
 
 // ─── DELETE ───────────────────────────────────────────────────────────────
 export const deleteBuildingInspectionUsecase = async (id: string) => {
