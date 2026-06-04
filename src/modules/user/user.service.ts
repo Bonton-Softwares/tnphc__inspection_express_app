@@ -465,6 +465,24 @@ export const loginService = async (data: {
   const isMatch = await bcrypt.compare(data.password, user.passwordHash);
   if (!isMatch) throw new Error("Invalid credentials");
 
+  // ── Block second login for non-standalone roles ───────────
+  const isStandalone = STANDALONE_ROLES.map((r) => r.toLowerCase()).includes(
+    user.role?.name?.toLowerCase() ?? ""
+  );
+
+  if (!isStandalone) {
+    const activeSession = await prisma.user_session.findFirst({
+      where: { userId: user.id, isActive: true },
+    });
+
+    if (activeSession) {
+      throw new Error(
+        "This account is already logged in on another device. Please logout from that device first and try again."
+      );
+    }
+  }
+  // ──────────────────────────────────────────────────────────
+
   const { accessToken, refreshToken, sessionId } = generateTokens({
     id: user.id,
     email: user.email,
@@ -474,23 +492,16 @@ export const loginService = async (data: {
     isActive: user.isActive,
   });
 
-  // Invalidate any existing active sessions, then create the new one
-  await prisma.$transaction([
-    prisma.user_session.updateMany({
-      where: { userId: user.id, isActive: true },
-      data: { isActive: false },
-    }),
-    prisma.user_session.create({
-      data: {
-        userId: user.id,
-        sessionId,
-        ipAddress: data.ipAddress ?? null,
-        userAgent: data.userAgent ?? null,
-        isActive: true,
-        lastActivity: new Date(),
-      },
-    }),
-  ]);
+  await prisma.user_session.create({
+    data: {
+      userId: user.id,
+      sessionId,
+      ipAddress: data.ipAddress ?? null,
+      userAgent: data.userAgent ?? null,
+      isActive: true,
+      lastActivity: new Date(),
+    },
+  });
 
   return {
     user: {
