@@ -87,6 +87,9 @@ export const createProjectSchema = Joi.object({
 
   location: Joi.string().optional().allow(null, ""),
 
+  // ── NEW: Top-level district/city selected from frontend before department ──
+  selectedDistrictId: Joi.string().uuid().optional().allow(null, ""),
+
   // ── Step 2: Department ──────────────────────────────────────
   departmentId: Joi.string().uuid().required().messages({
     "any.required": "departmentId is required",
@@ -120,20 +123,12 @@ export const createProjectSchema = Joi.object({
     "any.required": "hasSuperStructure is required",
   }),
 
-  superStructure: Joi.when("hasSuperStructure", {
-    is: true,
-    then: Joi.array()
-      .items(superStructureBlockSchema)
-      .min(1)
-      .required()
-      .messages({
-        "array.min":
-          "At least one block is required when hasSuperStructure is true",
-        "any.required":
-          "superStructure blocks are required when hasSuperStructure is true",
-      }),
-    otherwise: Joi.array().items(superStructureBlockSchema).optional(),
-  }),
+  // FIX: Schema only validates shape of blocks when provided.
+  // Whether blocks are REQUIRED is determined in the service layer:
+  //   → blocks required only when BOTH hasSuperStructure=true
+  //     AND the "Super Structure" stage is in stageIds.
+  //   → hasSuperStructure=true alone (without the stage) → blocks optional.
+  superStructure: Joi.array().items(superStructureBlockSchema).optional(),
 
   // ── Meta ────────────────────────────────────────────────────
   createdById: Joi.string().uuid().required().messages({
@@ -155,6 +150,9 @@ export const updateProjectSchema = Joi.object({
 
   location: Joi.string().optional().allow(null, ""),
 
+  // ── NEW: Top-level district/city selected from frontend before department ──
+  selectedDistrictId: Joi.string().uuid().optional().allow(null, ""),
+
   departmentId: Joi.string().uuid().optional(),
 
   // When updating to a special-unit project: provide specialUnitId only.
@@ -171,11 +169,8 @@ export const updateProjectSchema = Joi.object({
 
   hasSuperStructure: Joi.boolean().optional(),
 
-  superStructure: Joi.when("hasSuperStructure", {
-    is: true,
-    then: Joi.array().items(superStructureBlockSchema).min(1).optional(),
-    otherwise: Joi.array().items(superStructureBlockSchema).optional(),
-  }),
+  // FIX: Schema only validates shape. Service layer enforces conditional requirement.
+  superStructure: Joi.array().items(superStructureBlockSchema).optional(),
 
   status: Joi.string()
     .valid(

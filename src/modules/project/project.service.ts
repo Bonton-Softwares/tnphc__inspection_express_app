@@ -26,6 +26,8 @@ type CreateProjectInput = {
   projectName: string;
   buildingType: "OFFICE" | "RESIDENCY" | "OTHERS";
   location?: string;
+  // NEW: top-level district/city selected from frontend before department
+  selectedDistrictId?: string;
   departmentId: string;
   /**
    * DISTRICT/CITY project  → specialUnitId is absent/null
@@ -377,10 +379,20 @@ export const createProjectService = async (data: CreateProjectInput) => {
       await validateDistrictIds(tx, data.districtAccess);
     }
 
-    // ── 3. Validate stages ────────────────────────────────────
+    // ── 3. Validate selectedDistrictId (if provided) ──────────
+    if (data.selectedDistrictId) {
+      const selectedDistrict = await tx.masterDistrict.findUnique({
+        where: { id: data.selectedDistrictId, isActive: true },
+      });
+      if (!selectedDistrict) {
+        throw new Error("Invalid selectedDistrictId");
+      }
+    }
+
+    // ── 4. Validate stages ────────────────────────────────────
     await validateStages(tx, data.stageIds);
 
-    // ── 4. Validate createdById ───────────────────────────────
+    // ── 5. Validate createdById ───────────────────────────────
     if (!data.createdById) {
       throw new Error("createdById (the creating user's ID) is required");
     }
@@ -393,22 +405,47 @@ export const createProjectService = async (data: CreateProjectInput) => {
       );
     }
 
-    // ── 5. Validate super-structure ───────────────────────────
+    // ── 6. Super-structure validation ─────────────────────────
+    //
+    // FIXED LOGIC:
+    //   hasSuperStructure=true + "Super Structure" stage selected
+    //     → blocks/floors are REQUIRED (must have ≥ 1 block)
+    //   hasSuperStructure=true + "Super Structure" stage NOT selected
+    //     → blocks/floors are OPTIONAL (allow empty superStructure)
+    //   hasSuperStructure=false
+    //     → blocks/floors are ignored
+    //
+    const stageRecords = await tx.stage.findMany({
+      where: { id: { in: data.stageIds }, isActive: true },
+      select: { id: true, name: true },
+    });
+    const stageNames = stageRecords.map((s: { name: string }) => s.name);
+    const hasSuperStructureStage = stageNames.includes("Super Structure");
+
     if (data.hasSuperStructure) {
-      if (!data.superStructure || data.superStructure.length === 0) {
-        throw new Error(
-          "At least one block is required when hasSuperStructure is true"
-        );
+      if (hasSuperStructureStage) {
+        // Both true → blocks are mandatory
+        if (!data.superStructure || data.superStructure.length === 0) {
+          throw new Error(
+            "At least one block is required when both hasSuperStructure is true and Super Structure stage is selected"
+          );
+        }
+        validateSuperStructureBlocks(data.superStructure);
+      } else {
+        // hasSuperStructure=true but stage not selected → blocks optional, validate shape if provided
+        if (data.superStructure && data.superStructure.length > 0) {
+          validateSuperStructureBlocks(data.superStructure);
+        }
       }
-      validateSuperStructureBlocks(data.superStructure);
     }
 
-    // ── 6. Create project ─────────────────────────────────────
+    // ── 7. Create project ─────────────────────────────────────
     const project = await tx.project.create({
       data: {
         projectName: data.projectName,
         buildingType: data.buildingType,
         location: data.location ?? null,
+        selectedDistrictId: data.selectedDistrictId ?? null,
         departmentId: data.departmentId,
         jurisdictionType: isSpecialUnit ? "SPECIAL_UNIT" : "DISTRICT",
         accessType: isSpecialUnit
@@ -422,15 +459,26 @@ export const createProjectService = async (data: CreateProjectInput) => {
       },
     });
 
-    // ── 7. Insert access mapping rows ─────────────────────────
+    // ── 8. Insert access mapping rows ─────────────────────────
     const accessRows = isSpecialUnit
       ? buildSpecialUnitAccessRow(project.id, data.specialUnitId!, data.createdById)
       : buildDistrictAccessRows(project.id, data.districtAccess!, data.createdById);
 
     await tx.project_access_mapping.createMany({ data: accessRows });
 
-    // ── 8. Super-structure blocks & floors (relational tables) ─
-    if (data.hasSuperStructure && data.superStructure?.length) {
+    // ── 9. Super-structure blocks & floors (relational tables) ─
+    if (
+      data.hasSuperStructure &&
+      hasSuperStructureStage &&
+      data.superStructure?.length
+    ) {
+      await createBlocksAndFloors(tx, project.id, data.superStructure);
+    } else if (
+      data.hasSuperStructure &&
+      !hasSuperStructureStage &&
+      data.superStructure?.length
+    ) {
+      // Blocks provided even without the stage → still persist them
       await createBlocksAndFloors(tx, project.id, data.superStructure);
     }
 
@@ -491,6 +539,7 @@ export const getAllProjectsService = async (query: {
       where,
       include: {
         department: true,
+        selectedDistrict: true,
         projectAccessMappings: {
           where: { isActive: true },
           include: { district: true, specialUnit: true },
@@ -522,6 +571,10 @@ export const getAllProjectsService = async (query: {
       buildingType: p.buildingType,
       location: p.location,
       departmentName: p.department?.name ?? null,
+      // NEW: selectedDistrict info
+      selectedDistrictId: p.selectedDistrictId ?? null,
+      selectedDistrictName: (p as any).selectedDistrict?.name ?? null,
+      selectedDistrictType: (p as any).selectedDistrict?.type ?? null,
       jurisdictionType: p.jurisdictionType,
       accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
@@ -576,6 +629,7 @@ export const getProjectByIdService = async (id: string) => {
     where: { id },
     include: {
       department: true,
+      selectedDistrict: true,
       projectAccessMappings: {
         where: { isActive: true },
         include: { district: true, specialUnit: true },
@@ -607,6 +661,10 @@ export const getProjectByIdService = async (id: string) => {
     projectName: project.projectName,
     buildingType: project.buildingType,
     location: project.location,
+    // NEW: selectedDistrict info
+    selectedDistrictId: project.selectedDistrictId ?? null,
+    selectedDistrictName: (project as any).selectedDistrict?.name ?? null,
+    selectedDistrictType: (project as any).selectedDistrict?.type ?? null,
     jurisdictionType: project.jurisdictionType,
     accessType: isSpecialUnit ? null : project.accessType,
     hasSuperStructure: project.hasSuperStructure,
@@ -690,7 +748,17 @@ export const updateProjectService = async (
       if (!dept) throw new Error("Invalid departmentId");
     }
 
-    // ── 3. Detect access removal and enforce changeReason ─────
+    // ── 3. Validate selectedDistrictId (if provided) ──────────
+    if (data.selectedDistrictId) {
+      const selectedDistrict = await tx.masterDistrict.findUnique({
+        where: { id: data.selectedDistrictId, isActive: true },
+      });
+      if (!selectedDistrict) {
+        throw new Error("Invalid selectedDistrictId");
+      }
+    }
+
+    // ── 4. Detect access removal and enforce changeReason ─────
     //
     // If any department / district / city / special unit / access mapping
     // is being removed, `changeReason` is mandatory.
@@ -709,7 +777,7 @@ export const updateProjectService = async (
         ? !!data.specialUnitId
         : existing.jurisdictionType === "SPECIAL_UNIT";
 
-    // ── 4. Validate special unit ──────────────────────────────
+    // ── 5. Validate special unit ──────────────────────────────
     if (data.specialUnitId) {
       const unit = await tx.specialUnits.findUnique({
         where: { id: data.specialUnitId, isActive: true },
@@ -717,17 +785,17 @@ export const updateProjectService = async (
       if (!unit) throw new Error("Invalid specialUnitId");
     }
 
-    // ── 5. Validate district IDs (only for district projects) ─
+    // ── 6. Validate district IDs (only for district projects) ─
     if (!isSpecialUnit && data.districtAccess) {
       await validateDistrictIds(tx, data.districtAccess);
     }
 
-    // ── 6. Validate stages ────────────────────────────────────
+    // ── 7. Validate stages ────────────────────────────────────
     if (data.stageIds?.length) {
       await validateStages(tx, data.stageIds);
     }
 
-    // ── 7. Merge selectedStages (never remove existing stages) ─
+    // ── 8. Merge selectedStages (never remove existing stages) ─
     //
     // The incoming stageIds are merged with the existing selectedStages so
     // that previously completed stage records are never orphaned.
@@ -736,7 +804,6 @@ export const updateProjectService = async (
       const existingStageIds: string[] = Array.isArray(existing.selectedStages)
         ? (existing.selectedStages as string[])
         : [];
-      const incomingSet = new Set(data.stageIds);
       // Union: keep all existing, add any new ones
       const merged = [...existingStageIds];
       for (const sid of data.stageIds) {
@@ -745,10 +812,16 @@ export const updateProjectService = async (
       mergedStageIds = merged;
     }
 
-    // ── 8. Validate super-structure consistency ───────────────
+    // ── 9. Super-structure consistency validation ─────────────
     //
-    // Resolve the effective hasSuperStructure and selectedStages values
-    // (post-merge) so we can run the cross-field validation rules.
+    // FIXED LOGIC:
+    //   BOTH hasSuperStructure=true AND "Super Structure" stage selected
+    //     → blocks/floors are REQUIRED
+    //   hasSuperStructure=true alone (stage not selected)
+    //     → blocks/floors are OPTIONAL
+    //   hasSuperStructure=false
+    //     → blocks/floors not applicable
+    //
     const effectiveHasSuperStructure =
       data.hasSuperStructure !== undefined
         ? data.hasSuperStructure
@@ -760,8 +833,7 @@ export const updateProjectService = async (
         : []
     );
 
-    // Fetch the names of all stages in the merged set so we can check
-    // whether "Super Structure" is among them.
+    // Fetch the names of all stages in the merged set
     const stageRecords = await tx.stage.findMany({
       where: { id: { in: effectiveStageIds }, isActive: true },
       select: { id: true, name: true },
@@ -769,32 +841,17 @@ export const updateProjectService = async (
     const effectiveStageNames = stageRecords.map((s: { name: string }) => s.name);
     const hasSuperStructureStage = effectiveStageNames.includes("Super Structure");
 
-    // Rule: hasSuperStructure=true requires the "Super Structure" stage selected
-    if (effectiveHasSuperStructure && !hasSuperStructureStage) {
-      throw new Error(
-        "Super Structure stage must be selected when hasSuperStructure is enabled."
-      );
-    }
-
-    // Rule: "Super Structure" stage selected requires hasSuperStructure=true
-    if (hasSuperStructureStage && !effectiveHasSuperStructure) {
-      throw new Error(
-        "hasSuperStructure must be enabled when Super Structure stage is selected."
-      );
-    }
-
-    // Rule: blocks/floors can only exist when both conditions are met
+    // Rule: blocks provided but neither condition met
     const incomingHasBlocks =
       data.superStructure !== undefined && data.superStructure.length > 0;
-    if (incomingHasBlocks && (!effectiveHasSuperStructure || !hasSuperStructureStage)) {
+    if (incomingHasBlocks && !effectiveHasSuperStructure) {
       throw new Error(
-        "Blocks and floors can be created only when Super Structure stage is selected."
+        "Blocks and floors can be created only when hasSuperStructure is true."
       );
     }
 
-    // Rule: when hasSuperStructure + Super Structure stage, at least one block required
+    // Rule: BOTH conditions met → at least one block required
     if (effectiveHasSuperStructure && hasSuperStructureStage) {
-      // Check: after the update, will there be at least one block?
       const existingBlockCount = await tx.project_block.count({
         where: { projectId: id },
       });
@@ -802,17 +859,17 @@ export const updateProjectService = async (
         existingBlockCount + (data.superStructure?.length ?? 0);
       if (totalBlocksAfterUpdate === 0) {
         throw new Error(
-          "At least one block is required when Super Structure stage is selected."
+          "At least one block is required when both hasSuperStructure is true and Super Structure stage is selected."
         );
       }
     }
 
-    // Validate incoming block/floor structure
+    // Validate incoming block/floor structure shape
     if (data.superStructure?.length) {
       validateSuperStructureBlocks(data.superStructure);
     }
 
-    // ── 9. Build update payload ───────────────────────────────
+    // ── 10. Build update payload ──────────────────────────────
     const updatePayload: any = {
       updatedById: data.updatedById ?? null,
     };
@@ -823,6 +880,8 @@ export const updateProjectService = async (
     if (data.departmentId !== undefined) updatePayload.departmentId = data.departmentId;
     if (data.hasSuperStructure !== undefined) updatePayload.hasSuperStructure = data.hasSuperStructure;
     if (data.status !== undefined) updatePayload.status = data.status;
+    // NEW: persist selectedDistrictId update
+    if (data.selectedDistrictId !== undefined) updatePayload.selectedDistrictId = data.selectedDistrictId ?? null;
 
     // Always write the merged stage list (never a subset of the original)
     if (mergedStageIds !== undefined) {
@@ -840,10 +899,10 @@ export const updateProjectService = async (
       updatePayload.accessType = data.districtAccess.accessType;
     }
 
-    // ── 10. Update project row ────────────────────────────────
+    // ── 11. Update project row ────────────────────────────────
     await tx.project.update({ where: { id }, data: updatePayload });
 
-    // ── 11. Replace access mappings when jurisdiction changes ──
+    // ── 12. Replace access mappings when jurisdiction changes ──
     const shouldReplaceAccess =
       data.specialUnitId !== undefined || data.districtAccess !== undefined;
 
@@ -868,7 +927,7 @@ export const updateProjectService = async (
       }
     }
 
-    // ── 12. Incrementally upsert blocks and floors ────────────
+    // ── 13. Incrementally upsert blocks and floors ────────────
     //
     // KEY CHANGE: We no longer delete any existing blocks, floors, progress,
     // or quality records. Instead we only INSERT what is missing.
@@ -880,7 +939,7 @@ export const updateProjectService = async (
       await upsertBlocksAndFloors(tx, id, data.superStructure);
     }
 
-    // ── 13. Project history ───────────────────────────────────
+    // ── 14. Project history ───────────────────────────────────
     await tx.project_history.create({
       data: {
         projectId: id,
@@ -893,7 +952,7 @@ export const updateProjectService = async (
       },
     });
 
-    // ── 14. Audit log for access removal ─────────────────────
+    // ── 15. Audit log for access removal ─────────────────────
     if (accessWasRemoved) {
       await tx.auditLog.create({
         data: {
@@ -915,11 +974,12 @@ export const updateProjectService = async (
       });
     }
 
-    // ── 15. Return updated project ────────────────────────────
+    // ── 16. Return updated project ────────────────────────────
     return await tx.project.findUnique({
       where: { id },
       include: {
         department: true,
+        selectedDistrict: true,
         projectAccessMappings: {
           where: { isActive: true },
           include: { district: true, specialUnit: true },
@@ -1046,6 +1106,7 @@ export const getProjectsByUserService = async ({
       where,
       include: {
         department: true,
+        selectedDistrict: true,
         projectAccessMappings: {
           where: { isActive: true },
           include: { district: true, specialUnit: true },
@@ -1229,6 +1290,10 @@ export const getProjectsByUserService = async ({
       buildingType: p.buildingType,
       location: p.location,
       departmentName: p.department?.name ?? null,
+      // NEW: selectedDistrict info
+      selectedDistrictId: p.selectedDistrictId ?? null,
+      selectedDistrictName: (p as any).selectedDistrict?.name ?? null,
+      selectedDistrictType: (p as any).selectedDistrict?.type ?? null,
       jurisdictionType: p.jurisdictionType,
       accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
