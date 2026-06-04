@@ -173,13 +173,16 @@ export const updateBuildingInspectionSchema = Joi.object({
   dwRemarks: Joi.string().optional().allow(null, ""),
 
   // LIFTS
-  liftWorking: Joi.boolean().truthy("true").falsy("false").optional(),
-  liftWorkingRemarks: Joi.string().optional().allow(null, ""),
+  
+liftWorking: Joi.boolean().truthy("true").falsy("false").optional(),
+liftWorkingRemarks: Joi.string().optional().allow(null, ""),
 
-  liftSafety: Joi.boolean().truthy("true").falsy("false").optional(),
-  liftSafetyRemarks: Joi.string().optional().allow(null, ""),
+liftSafety: Joi.boolean().truthy("true").falsy("false").optional(),
+liftSafetyRemarks: Joi.string().optional().allow(null, ""),
 
-  liftRemarks: Joi.string().optional().allow(null, ""),
+liftCertificatePhoto: Joi.any().optional(), // ← ADD
+
+liftRemarks: Joi.string().optional().allow(null, ""),
 
   // FIRE FIGHTING SYSTEM
   fireSystems: Joi.alternatives()
