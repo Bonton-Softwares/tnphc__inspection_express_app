@@ -261,6 +261,9 @@ model project {
 
   location              String?  @db.Text
 
+  selectedDistrictId    String?  @map("selected_district_id") @db.VarChar(36)
+selectedDistrict      masterDistrict? @relation("ProjectSelectedDistrict", fields: [selectedDistrictId], references: [id])
+
   hasSuperStructure     Boolean  @default(false)
 
   selectedStages        Json?
@@ -399,6 +402,7 @@ model masterDistrict {
   @@index([type])
 
   @@map("master_districts")
+  selectedProjects      project[] @relation("ProjectSelectedDistrict")
 }
 
 model AuditLog {
