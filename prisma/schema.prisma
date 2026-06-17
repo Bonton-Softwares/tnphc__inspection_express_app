@@ -299,9 +299,7 @@ selectedDistrict      masterDistrict? @relation("ProjectSelectedDistrict", field
   foundationProgresses       FoundationProgress[]
   foundationQualityChecks    FoundationQualityCheck[]
   plinthStages               PlinthStage[]
-  interiorsProgress interiorsProgress[]
-
-  exteriorsProgress exteriorsProgress[]
+  inspectionProgresses inspection_progress[]
 
   BuildingInspection         BuildingInspection[]
   DevelopmentWork            DevelopmentWork[]
@@ -309,7 +307,7 @@ selectedDistrict      masterDistrict? @relation("ProjectSelectedDistrict", field
   TakeoverDevelopmentWork    TakeoverDevelopmentWork[]
 
   
-    SuperStructureProgress superStructureProgress[]
+    
 
   
  
@@ -465,6 +463,8 @@ model material {
 
   materialGrades      material_grade[]
   materialBrandGrades material_brand_grade[]
+    inspectionQuestions        inspection_question[]
+  inspectionQuestionOptions  inspection_question_option[]
 
   @@index([code])
 }
@@ -845,240 +845,18 @@ model PlinthStage {
   project project @relation(fields: [projectId], references: [id])
 }
 
-model interiorsProgress {
-id String @id @default(uuid())
- projectId String 
- blockId String 
- floorId String 
- stage String? 
 
- 
 
-  progressPhoto Json?
-  progressRemarks String?
-  project project @relation(fields: [projectId], references: [id]) 
-  block project_block @relation(fields: [blockId], references: [id])
-   floor project_floor @relation(fields: [floorId], references: [id]) 
-  
-quality interiorsQuality?
-  status interiorsStatus @default(NOT_STARTED)
 
-  isActive Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
-model interiorsQuality {
-id String @id @default(uuid())
- progressId String @unique
-  progress interiorsProgress @relation(fields: [progressId], references: [id])
 
-  workStartedDate DateTime?
 
-  isDelay Boolean?
-  delayDays Int?
 
-  delayReason String?
-  delayOtherReason String?
 
-  // CEMENT
-  cementGradeId String?
-  cementBrandId String?
-  cementRemarks String?
-  cementLabTest String?
-  cementPhoto Json?
 
-  // SAND
-  sandType String?
-  sandLabTest String?
-  sandPhoto Json?
 
-  sandSieveTestDone Boolean?
-  sandSieveLabTest String?
-  sandSievePhoto Json?
 
-  // AGGREGATE
-  aggregateSize Float?
-  aggregateLabTest String?
-  aggregatePhoto Json?
-
-  // WATER
-  waterLabTest String?
-  waterPhoto Json?
-
-  // CONCRETE
-  concreteLabTest String?
-  concretePhoto Json?
-
-  concreteQualityTestDone Boolean?
-  concreteQualityLabTest String?
-  concreteQualityPhoto Json?
-
-  // BRICKS
-  bricksLabTest String?
-  bricksPhoto Json?
-
-  bricksQualityTestDone Boolean?
-  bricksQualityLabTest String?
-  bricksQualityPhoto Json?
-
-  // PLASTERING
-  plasteringTestDone Boolean?
-  plasteringLabTest String?
-  plasteringPhoto Json?
-
-  // DOORS & WINDOWS
-  doorWoodType String?
-  upvcBrand String?
-  glassBrand String?
-  glassThickness String?
-
-  // TILES
-  floorType String?
-  tileBrand String?
-  tileRemarks String?
-
-  // PAINTING
-  paintBrand String?
-  paintingQuality String?
-
-  qualityRemarks String?
-   isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum interiorsStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-}
-
-model exteriorsProgress {
- id String @id @default(uuid()) 
- projectId String 
- blockId String
-  floorId String 
-  stage String? 
-  
-remarks String?
- status exteriorsStatus @default(NOT_STARTED)
-
-  
-
-  progressPhoto Json?
-  
-project project @relation(fields: [projectId], references: [id])
- block project_block @relation(fields: [blockId], references: [id]) 
- floor project_floor @relation(fields: [floorId], references: [id]) 
- quality exteriorsQuality?
-  
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model exteriorsQuality {
- id String @id @default(uuid())
-  progressId String @unique 
-  progress exteriorsProgress @relation(fields: [progressId], references: [id])
-
-  workStartedDate DateTime?
-
-  isDelayed Boolean?
-
-  delayDays Int?
-  delayReason String?
-  delayOther String?
-
-  generalRemarks String?
-
-  // CEMENT
-  cementGradeId String?
-  cementBrandId String?
-  cementRemarks String?
-  cementLabTest String?
-  cementPhoto Json?
-
-  // SAND
-  sandType String?
-  sandLabTest String?
-  sandPhoto Json?
-
-  sandSieveTestDone Boolean?
-  sandSieveLabTest String?
-  sandSievePhoto Json?
-
-  // AGGREGATE
-  aggregateSize Float?
-  aggregateLabTest String?
-  aggregatePhoto Json?
-
-  // WATER
-  waterLabTest String?
-  waterPhoto Json?
-
-  // CONCRETE
-  concreteLabTest String?
-  concretePhoto Json?
-
-  concreteQualityTestDone Boolean?
-  concreteQualityLabTest String?
-  concreteQualityPhoto Json?
-
-  // BRICKS
-  bricksLabTest String?
-  bricksPhoto Json?
-
-  bricksQualityTestDone Boolean?
-  bricksQualityLabTest String?
-  bricksQualityPhoto Json?
-
-  // PLASTERING
-  plasteringTestDone Boolean?
-  plasteringLabTest String?
-  plasteringPhoto Json?
-  plasteringRemarks String?
-
-  // DOORS & WINDOWS
-  doorWindowType String?
-  upvcBrand String?
-  glassBrand String?
-  glassThickness String?
-  doorWindowRemarks String?
-
-  // INTERIOR TILES
-  interiorFloorType String?
-  interiorTileBrand String?
-  interiorTileRemarks String?
-
-  // ROOF TILES
-  roofFloorType String?
-  roofTileBrand String?
-  roofTileRemarks String?
-
-  // INTERIOR PAINTING
-  interiorPaintBrand String?
-  interiorPaintingQuality String?
-
-  // EXTERIOR PAINTING
-  exteriorPaintBrand String?
-  exteriorPaintingQuality String?
-
-  qualityRemarks String?
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum exteriorsStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-}
 
 model BuildingInspection {
   id                 String @id @default(uuid())
@@ -1203,14 +981,6 @@ model project_history {
   @@map("project_histories")
 }
 
-// ======================================================
-// SUPER STRUCTURE TABLE
-// ======================================================
-
-// ======================================================
-// SUPER STRUCTURE TABLE
-// ======================================================
-
 
 
 
@@ -1233,11 +1003,7 @@ model project_block {
 
   floors project_floor[]
 
-  superStructureProgresses superStructureProgress[]
-
-  interiorsProgresses interiorsProgress[]
-
-  exteriorsProgresses exteriorsProgress[]
+inspectionProgresses inspection_progress[]
 
   @@unique([projectId, blockName])
 }
@@ -1258,118 +1024,12 @@ model project_floor {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  superStructureProgress superStructureProgress[]
-  interiorsProgress      interiorsProgress[]
-  exteriorsProgress      exteriorsProgress[]
+ inspectionProgresses inspection_progress[]
 
   @@unique([blockId, floorName])
 }
 
-model superStructureProgress {
 
-  id String @id @default(uuid())
-
-  projectId String
-
-  blockId String
-
-  floorId String
-
-  stage String?
-
-  remarks String?
-
-  status superStructureStatus@default(NOT_STARTED)
-
-  photo Json?
-
-  isActive Boolean @default(true)
-
-  createdById String?
-
-  updatedById String?
-
-  createdAt DateTime @default(now())
-
-  updatedAt DateTime @updatedAt
-
-  project project@relation(fields: [projectId], references: [id])
-
-  block project_block@relation(fields: [blockId], references: [id])
-
-  floor project_floor@relation(fields: [floorId], references: [id])
-  quality superStructureQuality?
-}
-
-model superStructureQuality {
-  id        String @id @default(uuid())
-    progressId String @unique
-
-  progress superStructureProgress @relation(fields: [progressId], references: [id])
-
-  workStartedDate DateTime?
-
-  isDelay   Boolean?
-  delayDays Int?
-
-  delayReason      String?
-  delayOtherReason String?
-  generalRemarks String?
-  
-
-  cementGradeId String?
-  cementBrandId String?
-  cementRemarks String?
-  cementLabTest String?
-  cementPhoto   Json?
-
-  sandType String?
-  sandLabTest String?
-  sandPhoto   Json?
-  sandSieveTestDone Boolean?
-  sandSieveLabTest String?
-  sandSievePhoto   Json?
-
-  steelGradeId String?
-  steelBrandId String?
-  steelLabTest String?
-  steelPhoto   Json?
-
-  aggregateSize Float?
-  aggregateLabTest String?
-  aggregatePhoto   Json?
-
-  waterLabTest String?
-  waterPhoto   Json?
-
-  concreteLabTest String?
-  concretePhoto   Json?
-  concreteQualityTestDone Boolean?
-  concreteQualityLabTest String?
-  concreteQualityPhoto   Json?
-
-  bricksLabTest String?
-  bricksPhoto   Json?
-  bricksQualityTestDone Boolean?
-  bricksQualityLabTest String?
-  bricksQualityPhoto   Json?
-    brickWallAlignmentDone      Boolean?
-  brickWallAlignmentRemarks   String?
-  brickWallAlignmentPhoto     Json?
-
-  qualityRemarks String?
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum superStructureStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-}
 
 
 model masterDropdownType {
@@ -1421,3 +1081,200 @@ model masterDropdownCategory {
   @@map("master_dropdown_categories")
 }
 
+
+
+model inspection_module {
+  id String @id @default(uuid())
+
+  name String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moduleStages module_stage[]
+  progresses inspection_progress[]
+}
+
+model inspection_stage {
+  id String @id @default(uuid())
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moduleStages module_stage[]
+  progresses inspection_progress[]
+}
+
+model module_stage {
+  id String @id @default(uuid())
+
+  moduleId String
+  stageId String
+
+  module inspection_module @relation(fields: [moduleId],references: [id])
+
+  stage inspection_stage @relation(fields: [stageId],references: [id])
+
+  questions inspection_question[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([moduleId, stageId])
+}
+
+model inspection_question {
+  id String @id @default(uuid())
+
+  moduleStageId String
+
+  materialId String?
+  materialName String?
+
+  type String?
+  // BRAND
+  // GRADE
+  // TYPE
+  // OTHER
+
+  question String
+
+  fieldType String
+
+  minLimit Int?
+  maxLimit Int?
+
+  isRequired Boolean @default(false)
+
+  sortOrder Int @default(1)
+
+  isActive Boolean @default(true)
+
+  moduleStage module_stage @relation(fields: [moduleStageId], references: [id])
+
+  material material? @relation(fields: [materialId], references: [id])
+
+  options inspection_question_option[]
+
+  answers inspection_answer[]
+
+  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model inspection_question_option {
+  id String @id @default(uuid())
+
+  questionId String
+
+  materialId String?
+
+  referenceId String?
+  // brand.id
+  // grade.id
+  // material_type.id
+
+  value String
+
+  sortOrder Int @default(1)
+
+  question inspection_question @relation(fields: [questionId],references: [id])
+
+  material material? @relation(fields: [materialId],references: [id])
+
+  answers inspection_answer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model inspection_progress {
+
+  id String @id @default(uuid())
+
+  projectId String
+
+  moduleId String
+
+  blockId String?
+
+  floorId String?
+
+  roomNo String?
+
+  stageId String
+
+  remarks String?
+
+  status inspection_status @default(NOT_STARTED)
+
+  progressPhoto Json?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project project @relation(fields: [projectId],references: [id])
+
+  module inspection_module @relation(fields: [moduleId],references: [id])
+
+  block project_block? @relation(fields: [blockId],references: [id])
+
+  floor project_floor? @relation(fields: [floorId],references: [id])
+
+  stage inspection_stage @relation(fields: [stageId],references: [id])
+
+  answers inspection_answer[]
+
+  @@unique([projectId,moduleId,blockId,floorId,roomNo,stageId])
+}
+
+
+model inspection_answer {
+
+  id String @id @default(uuid())
+
+  progressId String
+
+  questionId String
+
+  optionId String?
+
+  answer String?
+
+  progress inspection_progress @relation(fields: [progressId],references: [id])
+
+  question inspection_question @relation(fields: [questionId],references: [id])
+
+  option inspection_question_option? @relation(fields: [optionId],references: [id])
+
+  images inspection_answer_image[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model inspection_answer_image {
+
+  id String @id @default(uuid())
+
+  answerId String
+
+  imageUrl String
+
+  answer inspection_answer @relation(fields: [answerId],references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum inspection_status {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
