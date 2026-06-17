@@ -17,15 +17,16 @@ import preConstructionRoutes from "../modules/PreConstructionStage/PreConstructi
 import foundationProgressRoutes from "../modules/FoundationProgress/FoundationProgress.routes";
 import foundationQualityCheckRoutes from "../modules/FoundationQualityCheck/FoundationQualityCheck.route";
 import plinthStageRoutes from "../modules/PlinthStage/PlinthStage.router";
-import interiorsStageRoutes from "../modules/InteriorsStage/InteriorsStage.routes";
-import exteriorsStageRoutes from "../modules/ExteriorsStage/Exteriorsstage.router";
+
 import developmentWorkRoutes from "../modules/DevelopmentWork/DevelopmentWork.route";
 import  buildingInspectionRoutes  from "../modules/BuildingInspection/BuildingInspection.routers";
 import  TakeoverBuildingInspectionRoutes from "../modules/takeoverBuildingInspection/takeoverBuildingInspection.router"; 
 import takeoverDevelopmentRoutes from "../modules/takeoverDevelopmentWork/takeoverDevelopmentWork.route";
-import superStructureProgressRoutes from "../modules/superStructureProgress/superStructureProgress.routes";
+
 import adminReportsRoute
 from "../modules/adminReports/adminReports.route";
+import inspectionRoutes from "../modules/Inspection/Inspection.route";
+
 import masterDropdownRoutes from "../modules/masterDropdown/masterDropdown.routes";
 import dropdownRoutes from "../modules/dropdown/dropdown.route";
 import pdfRoutes from "../modules/pdf/pdf.routes";
@@ -52,13 +53,13 @@ router.use("/pre-construction", baseAuth, preConstructionRoutes);
 router.use("/foundation-progress", baseAuth, foundationProgressRoutes);
 router.use("/foundation-quality-check", baseAuth, foundationQualityCheckRoutes); 
 router.use("/plinth-stage", baseAuth, plinthStageRoutes);
-router.use("/interiors-stage", baseAuth, interiorsStageRoutes);
-router.use("/exteriors-stage", baseAuth, exteriorsStageRoutes);
+
 router.use("/building-inspection", baseAuth, buildingInspectionRoutes);
 router.use("/development-work", baseAuth, developmentWorkRoutes);
 router.use("/takeover-buildinginspection", baseAuth,TakeoverBuildingInspectionRoutes);
 router.use("/takeover-developmentwork", baseAuth, takeoverDevelopmentRoutes);
-router.use("/superstructure",baseAuth,superStructureProgressRoutes);
+router.use("/inspection", baseAuth, inspectionRoutes);
+
 router.use(
   "/admin-reports",
   adminReportsRoute

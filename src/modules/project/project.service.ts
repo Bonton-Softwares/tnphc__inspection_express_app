@@ -620,110 +620,9 @@ export const getAllProjectsService = async (query: {
   return { totalRecords, data: formattedData };
 };
 
-// ─────────────────────────────────────────────────────────────
-// GET PROJECT BY ID
-// ─────────────────────────────────────────────────────────────
 
-export const getProjectByIdService = async (id: string) => {
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: {
-      department: true,
-      selectedDistrict: true,
-      projectAccessMappings: {
-        where: { isActive: true },
-        include: { district: true, specialUnit: true },
-      },
-      blocks: {
-        include: {
-          floors: {
-            orderBy: { floorNumber: "asc" },
-          },
-          superStructureProgresses: {
-            where: { isActive: true },
-          },
-        },
-      },
-      SuperStructureProgress: { where: { isActive: true } },
-      projectHistories: { orderBy: { createdAt: "desc" }, take: 10 },
-    },
-  });
 
-  if (!project || !project.isActive) throw new Error("Project not found");
 
-  const isSpecialUnit = project.jurisdictionType === "SPECIAL_UNIT";
-  const specialUnitMapping = project.projectAccessMappings.find((m) => !!m.specialUnitId);
-  const districtMappings = project.projectAccessMappings.filter((m) => !m.specialUnitId);
-
-  return {
-    id: project.id,
-    code: project.code,
-    projectName: project.projectName,
-    buildingType: project.buildingType,
-    location: project.location,
-    // NEW: selectedDistrict info
-    selectedDistrictId: project.selectedDistrictId ?? null,
-    selectedDistrictName: (project as any).selectedDistrict?.name ?? null,
-    selectedDistrictType: (project as any).selectedDistrict?.type ?? null,
-    jurisdictionType: project.jurisdictionType,
-    accessType: isSpecialUnit ? null : project.accessType,
-    hasSuperStructure: project.hasSuperStructure,
-    selectedStages: project.selectedStages,
-    status: project.status,
-
-    department: project.department
-      ? { id: project.department.id, name: project.department.name }
-      : null,
-
-    districtAccess: isSpecialUnit
-      ? null
-      : {
-          accessType: project.accessType,
-          districts: districtMappings
-            .filter((m) => m.districtId)
-            .map((m) => ({
-              districtId: m.districtId,
-              districtName: m.district?.name ?? null,
-              districtType: m.district?.type ?? null,
-            })),
-        },
-
-    specialUnitAccess: isSpecialUnit && specialUnitMapping
-      ? {
-          specialUnitId: specialUnitMapping.specialUnitId ?? null,
-          specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
-        }
-      : null,
-
-    blocks: project.blocks.map((b) => {
-      const completedFloors = b.superStructureProgresses.filter(
-        (sp) => sp.status === "COMPLETED"
-      ).length;
-
-      return {
-        blockId: b.id,
-        blockName: b.blockName,
-        totalFloors: b.totalFloors,
-        completedFloors,
-        floors: b.floors.map((f) => {
-          const floorProgress = b.superStructureProgresses.find(
-            (sp) => sp.floorId === f.id
-          );
-          return {
-            floorId: f.id,
-            floorName: f.floorName,
-            floorNumber: f.floorNumber,
-            status: floorProgress?.status ?? "NOT_STARTED",
-          };
-        }),
-      };
-    }),
-
-    recentHistory: project.projectHistories,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-  };
-};
 
 // ─────────────────────────────────────────────────────────────
 // UPDATE PROJECT
@@ -1012,362 +911,8 @@ export const deleteProjectService = async (id: string) => {
   });
 };
 
-// ─────────────────────────────────────────────────────────────
-// GET PROJECTS BY USER
-// ─────────────────────────────────────────────────────────────
 
-export const getProjectsByUserService = async ({
-  userId,
-  pageNumber,
-  pageSize,
-  search,
-}: {
-  userId?: string;
-  pageNumber?: string;
-  pageSize?: string;
-  search?: string;
-}) => {
-  const {
-    skip,
-    take,
-    pageNumber: currentPage,
-    pageSize: limit,
-  } = pageConfig({ pageNumber, pageSize });
 
-  const allStages = await prisma.stage.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true },
-  });
-  const stageMap = new Map(allStages.map((s) => [s.id, s.name]));
-
-  const where: any = {
-    isActive: true,
-  };
-
-  if (search) {
-    where.projectName = {
-      contains: search,
-      mode: "insensitive",
-    };
-  }
-
-  if (userId) {
-    const userAccess = await prisma.user_management.findMany({
-      where: {
-        userId,
-        isActive: true,
-      },
-    });
-
-    const departmentIds = [
-      ...new Set(userAccess.map((u) => u.departmentId)),
-    ];
-
-    const districtIds = userAccess
-      .filter((u) => u.districtId)
-      .map((u) => u.districtId as string);
-
-    const specialUnitIds = userAccess
-      .filter((u) => u.specialUnitId)
-      .map((u) => u.specialUnitId as string);
-
-    where.departmentId = {
-      in: departmentIds,
-    };
-
-    where.projectAccessMappings = {
-      some: {
-        isActive: true,
-
-        OR: [
-          {
-            districtId: {
-              in: districtIds,
-            },
-          },
-
-          {
-            specialUnitId: {
-              in: specialUnitIds,
-            },
-          },
-
-          {
-            districtId: null,
-            specialUnitId: null,
-          },
-        ],
-      },
-    };
-  }
-
-  const [projects, totalRecords] = await Promise.all([
-    prisma.project.findMany({
-      where,
-      include: {
-        department: true,
-        selectedDistrict: true,
-        projectAccessMappings: {
-          where: { isActive: true },
-          include: { district: true, specialUnit: true },
-        },
-        blocks: {
-          include: {
-            floors: {
-              orderBy: { floorNumber: "asc" },
-            },
-            superStructureProgresses: {
-              where: { isActive: true },
-            },
-          },
-        },
-        landSiteInspection: { where: { isActive: true } },
-        preConstructionInspections: { where: { isActive: true } },
-        foundationProgresses: { where: { isActive: true } },
-        foundationQualityChecks: { where: { isActive: true } },
-        plinthStages: { where: { isActive: true } },
-        interiorsProgress: {
-          where: { isActive: true },
-          include: { quality: true },
-        },
-        exteriorsProgress: {
-          where: { isActive: true },
-          include: { quality: true },
-        },
-        BuildingInspection: { where: { isActive: true } },
-        DevelopmentWork: { where: { isActive: true } },
-        TakeoverBuildingInsepction: { where: { isActive: true } },
-        TakeoverDevelopmentWork: { where: { isActive: true } },
-        SuperStructureProgress: {
-          where: { isActive: true },
-          include: { quality: true },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-    }),
-    prisma.project.count({ where }),
-  ]);
-
-  function getCompletedStageNames(p: (typeof projects)[0]): string[] {
-    const done: string[] = [];
-
-    if (p.landSiteInspection.length > 0)
-      done.push("Land Site Inspection");
-
-    if (p.preConstructionInspections.length > 0)
-      done.push("Pre Construction");
-
-    if (
-      p.foundationProgresses.length > 0 ||
-      p.foundationQualityChecks.length > 0
-    )
-      done.push("Foundation");
-
-    if (p.plinthStages.length > 0)
-      done.push("Plinth");
-
-    const totalSuperStructureFloors = p.blocks.reduce(
-      (sum, block) => sum + block.totalFloors,
-      0
-    );
-
-    const completedSuperStructureFloors =
-      p.SuperStructureProgress.filter(
-        (sp) => sp.status === "COMPLETED"
-      ).length;
-
-    if (
-      totalSuperStructureFloors > 0 &&
-      completedSuperStructureFloors === totalSuperStructureFloors
-    ) {
-      done.push("Super Structure");
-    }
-
-    const totalInteriorFloors = p.blocks.reduce(
-      (sum, block) => sum + block.totalFloors,
-      0
-    );
-
-    const completedInteriorFloors =
-      p.interiorsProgress.filter(
-        (ip) => ip.status === "COMPLETED"
-      ).length;
-
-    if (
-      totalInteriorFloors > 0 &&
-      completedInteriorFloors === totalInteriorFloors
-    ) {
-      done.push("Interiors");
-    }
-
-    const totalExteriorFloors = p.blocks.reduce(
-      (sum, block) => sum + block.totalFloors,
-      0
-    );
-
-    const completedExteriorFloors =
-      p.exteriorsProgress.filter(
-        (ep) => ep.status === "COMPLETED"
-      ).length;
-
-    if (
-      totalExteriorFloors > 0 &&
-      completedExteriorFloors === totalExteriorFloors
-    ) {
-      done.push("Exteriors");
-    }
-
-    if (p.BuildingInspection.length > 0)
-      done.push("Building Inspection");
-
-    if (p.DevelopmentWork.length > 0)
-      done.push("Development Work");
-
-    if (p.TakeoverBuildingInsepction.length > 0)
-      done.push("Takeover Building Inspection");
-
-    if (p.TakeoverDevelopmentWork.length > 0)
-      done.push("Takeover Development Work");
-
-    return done;
-  }
-
-  const data = projects.map((p) => {
-    const isSpecialUnit =
-      p.jurisdictionType === "SPECIAL_UNIT";
-
-    const specialUnitMapping =
-      p.projectAccessMappings.find(
-        (m) => !!m.specialUnitId
-      );
-
-    const districtMappings =
-      p.projectAccessMappings.filter(
-        (m) => !m.specialUnitId
-      );
-
-    const selectedStageCount = Array.isArray(p.selectedStages)
-      ? (p.selectedStages as string[]).length
-      : 0;
-
-    const selectedStageNames = Array.isArray(p.selectedStages)
-      ? (p.selectedStages as string[])
-          .map((id) => stageMap.get(id) ?? null)
-          .filter(Boolean) as string[]
-      : [];
-
-    const completedStageNames =
-      getCompletedStageNames(p);
-
-    const completedStages =
-      completedStageNames.length;
-
-    const pendingStages = Math.max(
-      0,
-      selectedStageCount - completedStages
-    );
-
-    let projectStatus = "AssignedProjects";
-
-    if (
-      completedStages > 0 &&
-      pendingStages > 0
-    )
-      projectStatus = "OngoingProjects";
-
-    if (
-      completedStages >= selectedStageCount &&
-      selectedStageCount > 0
-    )
-      projectStatus = "CompletedProjects";
-
-    return {
-      id: p.id,
-      code: p.code,
-      projectName: p.projectName,
-      buildingType: p.buildingType,
-      location: p.location,
-      departmentName: p.department?.name ?? null,
-      // NEW: selectedDistrict info
-      selectedDistrictId: p.selectedDistrictId ?? null,
-      selectedDistrictName: (p as any).selectedDistrict?.name ?? null,
-      selectedDistrictType: (p as any).selectedDistrict?.type ?? null,
-      jurisdictionType: p.jurisdictionType,
-      accessType: isSpecialUnit ? null : p.accessType,
-      hasSuperStructure: p.hasSuperStructure,
-
-      districtAccess: isSpecialUnit
-        ? null
-        : {
-            accessType: p.accessType,
-            districts: districtMappings
-              .filter((m) => m.districtId)
-              .map((m) => ({
-                districtId: m.districtId,
-                districtName:
-                  m.district?.name ?? null,
-                districtType:
-                  m.district?.type ?? null,
-              })),
-          },
-
-      specialUnitAccess:
-        isSpecialUnit && specialUnitMapping
-          ? {
-              specialUnitId:
-                specialUnitMapping.specialUnitId ??
-                null,
-              specialUnitName:
-                specialUnitMapping.specialUnit
-                  ?.name ?? null,
-            }
-          : null,
-
-      selectedStageCount,
-      selectedStageNames,
-      completedStages,
-      completedStageNames,
-      pendingStages,
-
-      superStructure: p.blocks.map((b) => {
-        const completedFloors = b.superStructureProgresses.filter(
-          (sp) => sp.status === "COMPLETED"
-        ).length;
-
-        return {
-          blockId: b.id,
-          blockName: b.blockName,
-          totalFloors: b.totalFloors,
-          completedFloors,
-          floors: b.floors.map((f) => {
-            const floorProgress = b.superStructureProgresses.find(
-              (sp) => sp.floorId === f.id
-            );
-            return {
-              floorId: f.id,
-              floorName: f.floorName,
-              floorNumber: f.floorNumber,
-              status: floorProgress?.status ?? "NOT_STARTED",
-            };
-          }),
-        };
-      }),
-
-      status: projectStatus,
-      createdAt: p.createdAt,
-    };
-  });
-
-  return {
-    totalRecords,
-    totalPages: Math.ceil(totalRecords / limit),
-    currentPage,
-    pageSize: limit,
-    data,
-  };
-};
 
 // ─────────────────────────────────────────────────────────────
 // DASHBOARD
@@ -1415,24 +960,24 @@ export const getProjectDashboardService = async (userId?: string) => {
       foundationProgresses: { where: { isActive: true } },
       foundationQualityChecks: { where: { isActive: true } },
       plinthStages: { where: { isActive: true } },
-      interiorsProgress: {
-        where: { isActive: true },
-        include: { quality: true },
-      },
-      exteriorsProgress: {
-        where: { isActive: true },
-        include: { quality: true },
-      },
       BuildingInspection: { where: { isActive: true } },
       DevelopmentWork: { where: { isActive: true } },
       TakeoverBuildingInsepction: { where: { isActive: true } },
       TakeoverDevelopmentWork: { where: { isActive: true } },
-      SuperStructureProgress: {
+      inspectionProgresses: {
         where: { isActive: true },
-        include: { quality: true },
+        include: {
+          module: true,
+          stage: true,
+          answers: true,
+        },
       },
     },
   });
+
+  // Load all inspection modules once
+  const inspectionModules = await prisma.inspection_module.findMany();
+  const moduleMap = new Map(inspectionModules.map((m) => [m.name.toLowerCase(), m.id]));
 
   let assignedProjects = 0;
   let ongoingProjects = 0;
@@ -1447,57 +992,36 @@ export const getProjectDashboardService = async (userId?: string) => {
       : 0;
 
     const done: string[] = [];
+
     if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
     if (p.plinthStages.length > 0) done.push("Plinth");
 
-    const totalSuperStructureFloors = await prisma.project_floor.count({
-      where: { projectId: p.id },
-    });
+    // ── Inspection-module based stages ────────────────────────
+    // Each module (Framed Structure, Load Bearing Structure, Interior, Exterior)
+    // is COMPLETED when ALL its inspection_progress records are COMPLETED.
+    const moduleNames = [
+      "Framed Structure",
+      "Load Bearing Structure",
+      "Interior",
+      "Exterior",
+    ];
 
-    const completedSuperStructureFloors =
-      p.SuperStructureProgress.filter(
-        (sp) => sp.status === "COMPLETED"
-      ).length;
+    for (const moduleName of moduleNames) {
+      const moduleId = moduleMap.get(moduleName.toLowerCase());
+      if (!moduleId) continue;
 
-    if (
-      totalSuperStructureFloors > 0 &&
-      completedSuperStructureFloors === totalSuperStructureFloors
-    ) {
-      done.push("Super Structure");
-    }
+      const moduleProgresses = (p.inspectionProgresses as any[]).filter(
+        (ip) => ip.moduleId === moduleId
+      );
 
-    const totalInteriorFloors = await prisma.project_floor.count({
-      where: { projectId: p.id },
-    });
-
-    const completedInteriorFloors =
-      p.interiorsProgress.filter(
-        (ip) => ip.status === "COMPLETED"
-      ).length;
-
-    if (
-      totalInteriorFloors > 0 &&
-      completedInteriorFloors === totalInteriorFloors
-    ) {
-      done.push("Interiors");
-    }
-
-    const totalExteriorFloors = await prisma.project_floor.count({
-      where: { projectId: p.id },
-    });
-
-    const completedExteriorFloors =
-      p.exteriorsProgress.filter(
-        (ep) => ep.status === "COMPLETED"
-      ).length;
-
-    if (
-      totalExteriorFloors > 0 &&
-      completedExteriorFloors === totalExteriorFloors
-    ) {
-      done.push("Exteriors");
+      if (
+        moduleProgresses.length > 0 &&
+        moduleProgresses.every((ip: any) => ip.status === "COMPLETED")
+      ) {
+        done.push(moduleName);
+      }
     }
 
     if (p.BuildingInspection.length > 0) done.push("Building Inspection");
@@ -1526,5 +1050,408 @@ export const getProjectDashboardService = async (userId?: string) => {
     totalInspections,
     completedInspections,
     pendingInspections,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET ASSIGNED PROJECTS (by user)
+// ─────────────────────────────────────────────────────────────
+
+export const getProjectsByUserService = async ({
+  userId,
+  pageNumber,
+  pageSize,
+  search,
+}: {
+  userId?: string;
+  pageNumber?: string;
+  pageSize?: string;
+  search?: string;
+}) => {
+  const {
+    skip,
+    take,
+    pageNumber: currentPage,
+    pageSize: limit,
+  } = pageConfig({ pageNumber, pageSize });
+
+  const allStages = await prisma.stage.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  });
+  const stageMap = new Map(allStages.map((s) => [s.id, s.name]));
+
+  const where: any = { isActive: true };
+
+  if (search) {
+    where.projectName = { contains: search, mode: "insensitive" };
+  }
+
+  if (userId) {
+    const userAccess = await prisma.user_management.findMany({
+      where: { userId, isActive: true },
+    });
+
+    const departmentIds = [
+      ...new Set(userAccess.map((u) => u.departmentId)),
+    ];
+
+    const districtIds = userAccess
+      .filter((u) => u.districtId)
+      .map((u) => u.districtId as string);
+
+    const specialUnitIds = userAccess
+      .filter((u) => u.specialUnitId)
+      .map((u) => u.specialUnitId as string);
+
+    where.departmentId = { in: departmentIds };
+
+    where.projectAccessMappings = {
+      some: {
+        isActive: true,
+        OR: [
+          { districtId: { in: districtIds } },
+          { specialUnitId: { in: specialUnitIds } },
+          { districtId: null, specialUnitId: null },
+        ],
+      },
+    };
+  }
+
+  // Load inspection modules for name → id mapping
+  const inspectionModules = await prisma.inspection_module.findMany();
+  const moduleMap = new Map(inspectionModules.map((m) => [m.name.toLowerCase(), m.id]));
+
+  const [projects, totalRecords] = await Promise.all([
+    prisma.project.findMany({
+      where,
+      include: {
+        department: true,
+        selectedDistrict: true,
+        projectAccessMappings: {
+          where: { isActive: true },
+          include: { district: true, specialUnit: true },
+        },
+        blocks: {
+          include: {
+            floors: { orderBy: { floorNumber: "asc" } },
+          },
+        },
+        landSiteInspection: { where: { isActive: true } },
+        preConstructionInspections: { where: { isActive: true } },
+        foundationProgresses: { where: { isActive: true } },
+        foundationQualityChecks: { where: { isActive: true } },
+        plinthStages: { where: { isActive: true } },
+        BuildingInspection: { where: { isActive: true } },
+        DevelopmentWork: { where: { isActive: true } },
+        TakeoverBuildingInsepction: { where: { isActive: true } },
+        TakeoverDevelopmentWork: { where: { isActive: true } },
+        inspectionProgresses: {
+          where: { isActive: true },
+          include: { module: true, stage: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.project.count({ where }),
+  ]);
+
+  function getCompletedStageNames(p: (typeof projects)[0]): string[] {
+    const done: string[] = [];
+
+    if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
+    if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
+    if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
+    if (p.plinthStages.length > 0) done.push("Plinth");
+
+    // ── Inspection-module based stages ────────────────────────
+    const moduleNames = [
+      "Framed Structure",
+      "Load Bearing Structure",
+      "Interior",
+      "Exterior",
+    ];
+
+    for (const moduleName of moduleNames) {
+      const moduleId = moduleMap.get(moduleName.toLowerCase());
+      if (!moduleId) continue;
+
+      const moduleProgresses = (p.inspectionProgresses as any[]).filter(
+        (ip) => ip.moduleId === moduleId
+      );
+
+      if (
+        moduleProgresses.length > 0 &&
+        moduleProgresses.every((ip: any) => ip.status === "COMPLETED")
+      ) {
+        done.push(moduleName);
+      }
+    }
+
+    if (p.BuildingInspection.length > 0) done.push("Building Inspection");
+    if (p.DevelopmentWork.length > 0) done.push("Development Work");
+    if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
+    if (p.TakeoverDevelopmentWork.length > 0) done.push("Takeover Development Work");
+
+    return done;
+  }
+
+  const data = projects.map((p) => {
+    const isSpecialUnit = p.jurisdictionType === "SPECIAL_UNIT";
+
+    const specialUnitMapping = p.projectAccessMappings.find(
+      (m) => !!m.specialUnitId
+    );
+
+    const districtMappings = p.projectAccessMappings.filter(
+      (m) => !m.specialUnitId
+    );
+
+    const selectedStageCount = Array.isArray(p.selectedStages)
+      ? (p.selectedStages as string[]).length
+      : 0;
+
+    const selectedStageNames = Array.isArray(p.selectedStages)
+      ? (p.selectedStages as string[])
+          .map((id) => stageMap.get(id) ?? null)
+          .filter(Boolean) as string[]
+      : [];
+
+    const completedStageNames = getCompletedStageNames(p);
+    const completedStages = completedStageNames.length;
+    const pendingStages = Math.max(0, selectedStageCount - completedStages);
+
+    let projectStatus = "AssignedProjects";
+    if (completedStages > 0 && pendingStages > 0) projectStatus = "OngoingProjects";
+    if (completedStages >= selectedStageCount && selectedStageCount > 0) projectStatus = "CompletedProjects";
+
+    // Per-module inspection summary for frontend
+    const moduleNames = [
+      "Framed Structure",
+      "Load Bearing Structure",
+      "Interior",
+      "Exterior",
+    ];
+
+    const inspectionSummary = moduleNames.map((moduleName) => {
+      const moduleId = moduleMap.get(moduleName.toLowerCase());
+      const progresses = moduleId
+        ? (p.inspectionProgresses as any[]).filter((ip) => ip.moduleId === moduleId)
+        : [];
+
+      const total = progresses.length;
+      const completed = progresses.filter((ip: any) => ip.status === "COMPLETED").length;
+      const inProgress = progresses.filter((ip: any) => ip.status === "IN_PROGRESS").length;
+
+      return {
+        moduleName,
+        total,
+        completed,
+        inProgress,
+        notStarted: total - completed - inProgress,
+        status:
+          total === 0
+            ? "NOT_STARTED"
+            : completed === total
+            ? "COMPLETED"
+            : "IN_PROGRESS",
+      };
+    });
+
+    return {
+      id: p.id,
+      code: p.code,
+      projectName: p.projectName,
+      buildingType: p.buildingType,
+      location: p.location,
+      departmentName: p.department?.name ?? null,
+      selectedDistrictId: p.selectedDistrictId ?? null,
+      selectedDistrictName: (p as any).selectedDistrict?.name ?? null,
+      selectedDistrictType: (p as any).selectedDistrict?.type ?? null,
+      jurisdictionType: p.jurisdictionType,
+      accessType: isSpecialUnit ? null : p.accessType,
+      hasSuperStructure: p.hasSuperStructure,
+
+      districtAccess: isSpecialUnit
+        ? null
+        : {
+            accessType: p.accessType,
+            districts: districtMappings
+              .filter((m) => m.districtId)
+              .map((m) => ({
+                districtId: m.districtId,
+                districtName: m.district?.name ?? null,
+                districtType: m.district?.type ?? null,
+              })),
+          },
+
+      specialUnitAccess:
+        isSpecialUnit && specialUnitMapping
+          ? {
+              specialUnitId: specialUnitMapping.specialUnitId ?? null,
+              specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
+            }
+          : null,
+
+      selectedStageCount,
+      selectedStageNames,
+      completedStages,
+      completedStageNames,
+      pendingStages,
+
+      blocks: p.blocks.map((b) => ({
+        blockId: b.id,
+        blockName: b.blockName,
+        totalFloors: b.totalFloors,
+        floors: b.floors.map((f) => ({
+          floorId: f.id,
+          floorName: f.floorName,
+          floorNumber: f.floorNumber,
+        })),
+      })),
+
+      inspectionSummary,
+
+      status: projectStatus,
+      createdAt: p.createdAt,
+    };
+  });
+
+  return {
+    totalRecords,
+    totalPages: Math.ceil(totalRecords / limit),
+    currentPage,
+    pageSize: limit,
+    data,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET PROJECT BY ID
+// ─────────────────────────────────────────────────────────────
+
+export const getProjectByIdService = async (id: string) => {
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: {
+      department: true,
+      selectedDistrict: true,
+      projectAccessMappings: {
+        where: { isActive: true },
+        include: { district: true, specialUnit: true },
+      },
+      blocks: {
+        include: {
+          floors: { orderBy: { floorNumber: "asc" } },
+        },
+      },
+      inspectionProgresses: {
+        where: { isActive: true },
+        include: { module: true, stage: true },
+      },
+      projectHistories: { orderBy: { createdAt: "desc" }, take: 10 },
+    },
+  });
+
+  if (!project || !project.isActive) throw new Error("Project not found");
+
+  const isSpecialUnit = project.jurisdictionType === "SPECIAL_UNIT";
+  const specialUnitMapping = project.projectAccessMappings.find((m) => !!m.specialUnitId);
+  const districtMappings = project.projectAccessMappings.filter((m) => !m.specialUnitId);
+
+  // Build per-module inspection summary
+  const inspectionModules = await prisma.inspection_module.findMany();
+  const moduleNames = [
+    "Framed Structure",
+    "Load Bearing Structure",
+    "Interior",
+    "Exterior",
+  ];
+
+  const inspectionSummary = moduleNames.map((moduleName) => {
+    const moduleId = inspectionModules.find(
+      (m) => m.name.toLowerCase() === moduleName.toLowerCase()
+    )?.id;
+
+    const progresses = moduleId
+      ? (project.inspectionProgresses as any[]).filter((ip) => ip.moduleId === moduleId)
+      : [];
+
+    const total = progresses.length;
+    const completed = progresses.filter((ip: any) => ip.status === "COMPLETED").length;
+    const inProgress = progresses.filter((ip: any) => ip.status === "IN_PROGRESS").length;
+
+    return {
+      moduleName,
+      total,
+      completed,
+      inProgress,
+      notStarted: total - completed - inProgress,
+      status:
+        total === 0
+          ? "NOT_STARTED"
+          : completed === total
+          ? "COMPLETED"
+          : "IN_PROGRESS",
+    };
+  });
+
+  return {
+    id: project.id,
+    code: project.code,
+    projectName: project.projectName,
+    buildingType: project.buildingType,
+    location: project.location,
+    selectedDistrictId: project.selectedDistrictId ?? null,
+    selectedDistrictName: (project as any).selectedDistrict?.name ?? null,
+    selectedDistrictType: (project as any).selectedDistrict?.type ?? null,
+    jurisdictionType: project.jurisdictionType,
+    accessType: isSpecialUnit ? null : project.accessType,
+    hasSuperStructure: project.hasSuperStructure,
+    selectedStages: project.selectedStages,
+    status: project.status,
+
+    department: project.department
+      ? { id: project.department.id, name: project.department.name }
+      : null,
+
+    districtAccess: isSpecialUnit
+      ? null
+      : {
+          accessType: project.accessType,
+          districts: districtMappings
+            .filter((m) => m.districtId)
+            .map((m) => ({
+              districtId: m.districtId,
+              districtName: m.district?.name ?? null,
+              districtType: m.district?.type ?? null,
+            })),
+        },
+
+    specialUnitAccess: isSpecialUnit && specialUnitMapping
+      ? {
+          specialUnitId: specialUnitMapping.specialUnitId ?? null,
+          specialUnitName: specialUnitMapping.specialUnit?.name ?? null,
+        }
+      : null,
+
+    blocks: project.blocks.map((b) => ({
+      blockId: b.id,
+      blockName: b.blockName,
+      totalFloors: b.totalFloors,
+      floors: b.floors.map((f) => ({
+        floorId: f.id,
+        floorName: f.floorName,
+        floorNumber: f.floorNumber,
+      })),
+    })),
+
+    inspectionSummary,
+
+    recentHistory: project.projectHistories,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
   };
 };
