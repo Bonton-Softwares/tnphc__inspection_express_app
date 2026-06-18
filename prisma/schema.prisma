@@ -1193,40 +1193,34 @@ model inspection_question_option {
 }
 
 model inspection_progress {
-
   id String @id @default(uuid())
 
   projectId String
-
   moduleId String
-
   blockId String?
-
   floorId String?
-
   roomNo String?
-
   stageId String
+
+  workStartedDate DateTime?
+  isDelay Boolean @default(false)
+  delayDays Int?
+  delayReason String?
+  delayOtherReason String?
 
   remarks String?
 
   status inspection_status @default(NOT_STARTED)
-
   progressPhoto Json?
-
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   project project @relation(fields: [projectId],references: [id])
-
   module inspection_module @relation(fields: [moduleId],references: [id])
-
   block project_block? @relation(fields: [blockId],references: [id])
-
   floor project_floor? @relation(fields: [floorId],references: [id])
-
   stage inspection_stage @relation(fields: [stageId],references: [id])
 
   answers inspection_answer[]
