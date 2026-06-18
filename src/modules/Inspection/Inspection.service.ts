@@ -5,19 +5,23 @@ import { logAudit } from "../../auditLogService";
 
 export const getInspectionSetupService = async (
   moduleSlug: string,
-  projectId:  string
+  projectId: string
 ) => {
-  const moduleName = moduleSlug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+  // Convert slug → UPPER_SNAKE_CASE to match DB values
+  // e.g. "framed-structure"       → "FRAMED_STRUCTURE"
+  //      "load-bearing-structure" → "LOAD_BEARING_STRUCTURE"
+  //      "interior"               → "INTERIOR"
+  //      "exterior"               → "EXTERIOR"
+  const moduleName = moduleSlug.toUpperCase().replace(/-/g, "_");
 
+  // ── 1. Resolve inspection module ────────────────────────────
   const inspectionModule = await prisma.inspection_module.findFirst({
     where: { name: { equals: moduleName, mode: "insensitive" } }
   });
 
   if (!inspectionModule) throw new Error(`Module '${moduleName}' not found`);
 
+  // ── 2. Load project with blocks + floors ────────────────────
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
@@ -31,64 +35,105 @@ export const getInspectionSetupService = async (
 
   if (!project) throw new Error("Project not found");
 
-  // Stages mapped to this module via module_stage
+  // ── 3. Determine structure type ──────────────────────────────
+  //   hasSuperStructure = true  → "FRAMED"        (has blocks/floors)
+  //   hasSuperStructure = false → "LOAD_BEARING"  (no blocks/floors)
+  const structureType: "FRAMED" | "LOAD_BEARING" = project.hasSuperStructure
+    ? "FRAMED"
+    : "LOAD_BEARING";
+
+  // ── 4. Build blocks/floors payload ──────────────────────────
+  const blocks =
+    structureType === "FRAMED"
+      ? project.blocks.map((b) => ({
+          id: b.id,
+          name: b.blockName,
+          totalFloors: b.totalFloors,
+          floors: b.floors.map((f) => ({
+            id: f.id,
+            name: f.floorName,
+            floorNumber: f.floorNumber
+          }))
+        }))
+      : [];
+
+  // ── 5. Stages mapped to this module ─────────────────────────
   const moduleStages = await prisma.module_stage.findMany({
-    where:   { moduleId: inspectionModule.id },
+    where: { moduleId: inspectionModule.id },
     include: { stage: true },
     orderBy: { stage: { name: "asc" } }
   });
 
   const stages = moduleStages.map((ms) => ({
     moduleStageId: ms.id,
-    stageId:       ms.stageId,
-    stageName:     ms.stage.name
+    stageId: ms.stageId,
+    stageName: ms.stage.name
   }));
 
-  // Existing progress for this project
+  // ── 6. Existing progress records scoped to this module ───────
   const existingProgress = await prisma.inspection_progress.findMany({
-    where:   { projectId, isActive: true },
-    include: { stage: true, module: true }
+    where: {
+      projectId,
+      moduleId: inspectionModule.id,
+      isActive: true
+    },
+    include: { stage: true, module: true, block: true, floor: true }
   });
 
   return {
     project: {
-      id:   project.id,
-      name: project.projectName
+      id: project.id,
+      name: project.projectName,
+      hasSuperStructure: project.hasSuperStructure,
+      structureType
     },
-    blocks: project.blocks.map((b) => ({
-      id:     b.id,
-      name:   b.blockName,
-      floors: b.floors.map((f) => ({ id: f.id, name: f.floorName }))
-    })),
+    structureType,
+    blocks,
     stages,
     existingProgress: existingProgress.map((p) => ({
       progressId: p.id,
-      blockId:    p.blockId,
-      floorId:    p.floorId,
-      roomNo:     p.roomNo,
-      stageId:    p.stageId,
-      stageName:  p.stage.name,
-      status:     p.status
+      blockId: p.blockId ?? null,
+      blockName: p.block?.blockName ?? null,
+      floorId: p.floorId ?? null,
+      floorName: p.floor?.floorName ?? null,
+      roomNo: p.roomNo ?? null,
+      stageId: p.stageId,
+      stageName: p.stage.name,
+      moduleName: p.module.name,
+      status: p.status
     }))
   };
 };
 
 // ─── CREATE PROGRESS ───────────────────────────────────────────────
-// Returns existing progressId if the same unique combination already exists.
 
 export const createProgressService = async (
   data: any,
   meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
+  if (!data.moduleStageId) throw new Error("moduleStageId is required");
+
+  // Derive moduleId + stageId from moduleStageId
+  const moduleStage = await prisma.module_stage.findUnique({
+    where: { id: data.moduleStageId },
+    include: { module: true, stage: true }
+  });
+
+  if (!moduleStage) throw new Error("Invalid moduleStageId");
+
+  const moduleId = moduleStage.moduleId;
+  const stageId  = moduleStage.stageId;
+
+  // Return existing if same combination already exists
   const existing = await prisma.inspection_progress.findFirst({
     where: {
       projectId: data.projectId,
-      moduleId:  data.moduleId,
-      blockId:   data.blockId   ?? null,
-      floorId:   data.floorId   ?? null,
-      roomNo:    data.roomNo    ?? null,
-      stageId:   data.stageId,
-      isActive:  true
+      moduleId,
+      blockId:  data.blockId  ?? null,
+      floorId:  data.floorId  ?? null,
+      roomNo:   data.roomNo   ?? null,
+      stageId,
+      isActive: true
     }
   });
 
@@ -98,16 +143,15 @@ export const createProgressService = async (
 
   const created = await prisma.inspection_progress.create({
     data: {
-      projectId:     data.projectId,
-      moduleId:      data.moduleId,
-      blockId:       data.blockId   ?? null,
-      floorId:       data.floorId   ?? null,
-      roomNo:        data.roomNo    ?? null,
-      stageId:       data.stageId,
-      remarks:       data.remarks   ?? null,
-      progressPhoto: data.progressPhoto ?? undefined,
-      status:        "IN_PROGRESS",
-      isActive:      true
+      projectId: data.projectId,
+      moduleId,
+      blockId:   data.blockId  ?? null,
+      floorId:   data.floorId  ?? null,
+      roomNo:    data.roomNo   ?? null,
+      stageId,
+      remarks: data.generalRemarks ?? null,
+      status:    "IN_PROGRESS",
+      isActive:  true
     }
   });
 
@@ -128,8 +172,8 @@ export const createProgressService = async (
 
 export const updateProgressService = async (
   progressId: string,
-  data:        any,
-  meta:        { userId?: string; roleId?: string; ip?: string } = {}
+  data: any,
+  meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
   const existing = await prisma.inspection_progress.findUnique({
     where: { id: progressId }
@@ -163,7 +207,7 @@ export const updateProgressService = async (
 
 export const deleteProgressService = async (
   progressId: string,
-  meta:        { userId?: string; roleId?: string; ip?: string } = {}
+  meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
   const existing = await prisma.inspection_progress.findUnique({
     where: { id: progressId }
@@ -188,17 +232,15 @@ export const deleteProgressService = async (
 };
 
 // ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
-// Loads everything needed to dynamically render the form screen.
 
 export const getProgressDetailService = async (progressId: string) => {
   const progress = await prisma.inspection_progress.findUnique({
     where:   { id: progressId },
-    include: { stage: true, module: true }
+    include: { stage: true, module: true, block: true, floor: true }
   });
 
   if (!progress) throw new Error("Progress not found");
 
-  // Find the module_stage mapping to get questions
   const moduleStage = await prisma.module_stage.findFirst({
     where: { moduleId: progress.moduleId, stageId: progress.stageId }
   });
@@ -226,12 +268,11 @@ export const getProgressDetailService = async (progressId: string) => {
 };
 
 // ─── SAVE ANSWERS (upsert per questionId) ─────────────────────────
-// Never delete-all + re-insert. Only updates changed values.
 
 export const saveAnswersService = async (
   progressId: string,
-  answers:    { questionId: string; optionId?: string; answer?: string; images?: { imageUrl: string }[] }[],
-  meta:        { userId?: string; roleId?: string; ip?: string } = {}
+  answers: { questionId: string; optionId?: string; answer?: string; images?: { imageUrl: string }[] }[],
+  meta: { userId?: string; roleId?: string; ip?: string } = {}
 ) => {
   const progress = await prisma.inspection_progress.findUnique({
     where: { id: progressId }
@@ -247,8 +288,10 @@ export const saveAnswersService = async (
     });
 
     if (existing) {
-      // Skip if nothing changed
-      if (existing.answer === (item.answer ?? null) && existing.optionId === (item.optionId ?? null)) {
+      if (
+        existing.answer   === (item.answer   ?? null) &&
+        existing.optionId === (item.optionId ?? null)
+      ) {
         results.push({ questionId: item.questionId, action: "unchanged" });
         continue;
       }
@@ -261,7 +304,6 @@ export const saveAnswersService = async (
         }
       });
 
-      // Replace images if provided
       if (item.images && item.images.length > 0) {
         await prisma.inspection_answer_image.deleteMany({ where: { answerId: existing.id } });
         await prisma.inspection_answer_image.createMany({
@@ -291,7 +333,6 @@ export const saveAnswersService = async (
         }
       });
 
-      // Insert images if provided
       if (item.images && item.images.length > 0) {
         await prisma.inspection_answer_image.createMany({
           data: item.images.map((img) => ({ answerId: created.id, imageUrl: img.imageUrl }))
@@ -312,9 +353,11 @@ export const saveAnswersService = async (
     }
   }
 
-  // Recalculate and update status after answers saved
   const allQuestions = await prisma.inspection_question.findMany({
-    where: { moduleStage: { moduleId: progress.moduleId, stageId: progress.stageId }, isActive: true }
+    where: {
+      moduleStage: { moduleId: progress.moduleId, stageId: progress.stageId },
+      isActive: true
+    }
   });
   const allAnswers = await prisma.inspection_answer.findMany({ where: { progressId } });
   const newStatus  = computeStatus(progress, allQuestions, allAnswers);
@@ -328,18 +371,19 @@ export const saveAnswersService = async (
 };
 
 // ─── DYNAMIC STATUS ────────────────────────────────────────────────
-// Never stored manually — always calculated from live data.
 
 export const computeStatus = (
   progress:  { id: string } | null,
   questions: { id: string; isRequired: boolean }[],
   answers:   { questionId: string; answer?: string | null }[]
 ): "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" => {
-  if (!progress) return "NOT_STARTED";
+  if (!progress)            return "NOT_STARTED";
   if (answers.length === 0) return "IN_PROGRESS";
 
   const answeredIds = new Set(
-    answers.filter((a) => a.answer && a.answer.trim() !== "").map((a) => a.questionId)
+    answers
+      .filter((a) => a.answer && a.answer.trim() !== "")
+      .map((a) => a.questionId)
   );
 
   const allRequiredAnswered = questions

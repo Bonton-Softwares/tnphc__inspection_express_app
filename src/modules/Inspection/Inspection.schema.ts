@@ -11,7 +11,7 @@ export const createProgressSchema = Joi.object({
   projectId:       Joi.string().uuid().required(),
   blockId:         Joi.string().uuid().required(),
   floorId:         Joi.string().uuid().required(),
-  roomName:        Joi.string().required(),
+  roomName: Joi.string().optional().allow(null, ""),
   moduleStageId:   Joi.string().uuid().required(),
 
   workStartedDate: Joi.date().optional().allow(null),
