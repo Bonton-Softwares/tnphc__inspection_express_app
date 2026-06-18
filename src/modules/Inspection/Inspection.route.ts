@@ -15,7 +15,8 @@ import {
   updateProgressController,
   deleteProgressController,
   getProgressDetailController,
-  saveAnswersController
+  saveAnswersController,
+    getProgressDataController
 } from "./Inspection.controller";
 
 const router = express.Router();
@@ -50,6 +51,12 @@ router.post(
   "/progress",
   validateRequest(createProgressSchema, "body"),
   createProgressController
+);
+
+router.get(
+  "/progress-data/:progressId",
+  validateRequest(progressParamSchema, "params"),
+  getProgressDataController
 );
 
 // Update work-started date, delay details, or general remarks.

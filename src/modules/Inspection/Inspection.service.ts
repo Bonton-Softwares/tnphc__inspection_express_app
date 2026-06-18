@@ -168,6 +168,27 @@ export const createProgressService = async (
   return { progressId: created.id, isExisting: false };
 };
 
+
+export const getProgressDataService = async (
+  progressId: string
+) => {
+  const progress = await prisma.inspection_progress.findUnique({
+    where: { id: progressId },
+    include: {
+      block: true,
+      floor: true,
+      stage: true,
+      module: true
+    }
+  });
+
+  if (!progress) {
+    throw new Error("Progress record not found");
+  }
+
+  return progress;
+};
+
 // ─── UPDATE PROGRESS ───────────────────────────────────────────────
 
 export const updateProgressService = async (
