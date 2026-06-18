@@ -141,20 +141,27 @@ export const createProgressService = async (
     return { progressId: existing.id, isExisting: true };
   }
 
-  const created = await prisma.inspection_progress.create({
-    data: {
-      projectId: data.projectId,
-      moduleId,
-      blockId:   data.blockId  ?? null,
-      floorId:   data.floorId  ?? null,
-      roomNo:    data.roomNo   ?? null,
-      stageId,
-      remarks: data.generalRemarks ?? null,
-      status:    "IN_PROGRESS",
-      isActive:  true
-    }
-  });
+const created = await prisma.inspection_progress.create({
+  data: {
+    projectId: data.projectId,
+    moduleId,
+    blockId: data.blockId ?? null,
+    floorId: data.floorId ?? null,
+    roomNo: data.roomNo ?? null,
+    stageId,
 
+    workStartedDate: data.workStartedDate ?? null,
+    isDelay: data.isDelay ?? false,
+    delayDays: data.delayDays ?? null,
+    delayReason: data.delayReason ?? null,
+    delayOtherReason: data.delayOtherReason ?? null,
+
+    remarks: data.generalRemarks ?? null,
+
+    status: "IN_PROGRESS",
+    isActive: true
+  }
+});
   await logAudit({
     tableName: "inspection_progress",
     recordId:  created.id,
@@ -200,27 +207,64 @@ export const updateProgressService = async (
     where: { id: progressId }
   });
 
-  if (!existing) throw new Error("Progress record not found");
+  if (!existing) {
+    throw new Error("Progress record not found");
+  }
 
   const updateData: any = {};
-  if (data.remarks       !== undefined) updateData.remarks       = data.remarks;
-  if (data.status        !== undefined) updateData.status        = data.status;
-  if (data.progressPhoto !== undefined) updateData.progressPhoto = data.progressPhoto;
+
+  // Progress Details
+  if (data.workStartedDate !== undefined) {
+    updateData.workStartedDate = data.workStartedDate
+      ? new Date(data.workStartedDate)
+      : null;
+  }
+
+  if (data.isDelay !== undefined) {
+    updateData.isDelay =
+      data.isDelay === true || data.isDelay === "true";
+  }
+
+  if (data.delayDays !== undefined) {
+    updateData.delayDays =
+      data.delayDays !== null ? Number(data.delayDays) : null;
+  }
+
+  if (data.delayReason !== undefined) {
+    updateData.delayReason = data.delayReason;
+  }
+
+  if (data.delayOtherReason !== undefined) {
+    updateData.delayOtherReason = data.delayOtherReason;
+  }
+
+  if (data.generalRemarks !== undefined) {
+    updateData.remarks = data.generalRemarks;
+  }
+
+  // Existing Fields
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+
+  if (data.progressPhoto !== undefined) {
+    updateData.progressPhoto = data.progressPhoto;
+  }
 
   await logAudit({
     tableName: "inspection_progress",
-    recordId:  progressId,
-    action:    "UPDATE",
-    oldValue:  existing,
-    newValue:  updateData,
-    userId:    meta.userId,
-    roleId:    meta.roleId,
+    recordId: progressId,
+    action: "UPDATE",
+    oldValue: existing,
+    newValue: updateData,
+    userId: meta.userId,
+    roleId: meta.roleId,
     ipAddress: meta.ip
   });
 
   return prisma.inspection_progress.update({
     where: { id: progressId },
-    data:  updateData
+    data: updateData
   });
 };
 

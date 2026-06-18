@@ -54,7 +54,7 @@ router.post(
 );
 
 router.get(
-  "/progress-data/:progressId",
+  "/progress/:progressId",
   validateRequest(progressParamSchema, "params"),
   getProgressDataController
 );
