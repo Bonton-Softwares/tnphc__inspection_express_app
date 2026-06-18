@@ -4,7 +4,8 @@ import {
   updateProgressService,
   deleteProgressService,
   getProgressDetailService,
-  saveAnswersService
+  saveAnswersService,
+    getProgressDataService
 } from "./Inspection.service";
 
 const extractMeta = (req: any) => ({
@@ -40,6 +41,10 @@ export const createProgressUsecase = async (body: any, req: any) => {
     extractMeta(req)
   );
 };
+
+export const getProgressDataUsecase = async (
+  progressId: string
+) => getProgressDataService(progressId);
 
 export const updateProgressUsecase = async (
   progressId: string,
