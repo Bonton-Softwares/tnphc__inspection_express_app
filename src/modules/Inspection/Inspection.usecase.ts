@@ -28,7 +28,7 @@ export const createProgressUsecase = async (body: any, req: any) => {
       projectId:        body.projectId,
       blockId:          body.blockId,
       floorId:          body.floorId,
-      roomName:         body.roomName,
+      roomNo:         body.roomName,
       moduleStageId:    body.moduleStageId,
       workStartedDate:  body.workStartedDate ? new Date(body.workStartedDate) : null,
       isDelay:          body.isDelay === "true" || body.isDelay === true,
