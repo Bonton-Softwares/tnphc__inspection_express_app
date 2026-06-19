@@ -6,7 +6,8 @@ import {
   deleteProgressUsecase,
   getProgressDetailUsecase,
   saveAnswersUsecase,
-    getProgressDataUsecase
+    getProgressDataUsecase,
+    getProgressByFloorUsecase
 } from "./Inspection.usecase";
 
 const getSingleValue = (val: any): string =>
@@ -124,6 +125,20 @@ export const saveAnswersController = async (
   try {
     const progressId = getSingleValue(req.params.progressId);
     const data = await saveAnswersUsecase(progressId, req.body, req.files, req);
+    res.status(200).json({ success: true, data });
+  } catch (e: any) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+
+export const getProgressByFloorController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const floorId = getSingleValue(req.params.floorId);
+    const data = await getProgressByFloorUsecase(floorId);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });
