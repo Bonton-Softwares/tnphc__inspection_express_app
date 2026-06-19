@@ -158,6 +158,8 @@ const created = await prisma.inspection_progress.create({
 
     remarks: data.generalRemarks ?? null,
 
+    progressPhoto: data.progressPhoto ?? null,
+
     status: "IN_PROGRESS",
     isActive: true
   }

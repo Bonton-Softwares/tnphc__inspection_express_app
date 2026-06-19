@@ -19,7 +19,12 @@ export const createProgressSchema = Joi.object({
   delayDays:       Joi.number().integer().optional().allow(null),
   delayReason:     Joi.string().optional().allow(null, ""),
   delayOtherReason: Joi.string().optional().allow(null, ""),
-  generalRemarks:  Joi.string().optional().allow(null, "")
+  generalRemarks:  Joi.string().optional().allow(null, ""),
+
+  progressPhoto:    Joi.alternatives()
+    .try(Joi.array().items(Joi.string()), Joi.object())
+    .optional()
+    .allow(null)
 });
 
 export const updateProgressSchema = Joi.object({
