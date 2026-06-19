@@ -50,6 +50,10 @@ export const getByModuleProjectSchema = Joi.object({
   projectId: Joi.string().uuid().required()
 });
 
+
+export const floorParamSchema = Joi.object({
+  floorId: Joi.string().uuid().required()
+});
 export const progressParamSchema = Joi.object({
   progressId: Joi.string().uuid().required()
 });

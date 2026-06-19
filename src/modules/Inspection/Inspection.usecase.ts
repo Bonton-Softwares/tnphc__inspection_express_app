@@ -5,7 +5,8 @@ import {
   deleteProgressService,
   getProgressDetailService,
   saveAnswersService,
-    getProgressDataService
+    getProgressDataService,
+    getProgressByFloorService
 } from "./Inspection.service";
 
 const extractMeta = (req: any) => ({
@@ -91,3 +92,6 @@ export const saveAnswersUsecase = async (
 
   return saveAnswersService(progressId, answersWithFiles, extractMeta(req));
 };
+
+export const getProgressByFloorUsecase = async (floorId: string) =>
+  getProgressByFloorService(floorId);

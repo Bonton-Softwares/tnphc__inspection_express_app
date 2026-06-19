@@ -296,6 +296,56 @@ export const deleteProgressService = async (
   });
 };
 
+
+
+export const getProgressByFloorService = async (floorId: string) => {
+  const progressList = await prisma.inspection_progress.findMany({
+    where: { floorId, isActive: true },
+    include: {
+      block: true,
+      floor: true,
+      stage: true,
+      module: true
+    },
+    orderBy: { roomNo: "asc" }
+  });
+
+  if (!progressList.length) return { floor: null, rooms: [] };
+
+  const floor = progressList[0].floor;
+
+  // Group by roomNo
+  const grouped: Record<string, typeof progressList> = {};
+  for (const p of progressList) {
+    const key = p.roomNo ?? "__no_room__";
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(p);
+  }
+
+  const rooms = Object.entries(grouped).map(([roomKey, records]) => ({
+    roomNo: roomKey === "__no_room__" ? null : roomKey,
+    totalStages: records.length,
+    completedStages: records.filter((r) => r.status === "COMPLETED").length,
+    overallStatus: records.every((r) => r.status === "COMPLETED")
+      ? "COMPLETED"
+      : records.some((r) => r.status === "IN_PROGRESS" || r.status === "COMPLETED")
+      ? "IN_PROGRESS"
+      : "NOT_STARTED",
+    stages: records.map((r) => ({
+      progressId: r.id,
+      stageId:    r.stageId,
+      stageName:  r.stage.name,
+      status:     r.status,
+      workStartedDate: r.workStartedDate,
+      isDelay:    r.isDelay,
+      remarks:    r.remarks,
+      progressPhoto: r.progressPhoto
+    }))
+  }));
+
+  return { floor, rooms };
+};
+
 // ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
 
 export const getProgressDetailService = async (progressId: string) => {
