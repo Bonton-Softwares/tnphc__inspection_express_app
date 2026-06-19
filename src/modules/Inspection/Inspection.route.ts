@@ -38,7 +38,7 @@ router.get(
 // Progress detail: progress record + dynamic questions + saved answers.
 // Used after progress creation and for re-opening the form to edit.
 router.get(
-  "/progress/:progressId",
+  "/questions/:progressId",
   validateRequest(progressParamSchema, "params"),
   getProgressDetailController
 );
