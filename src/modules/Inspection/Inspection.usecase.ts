@@ -37,7 +37,8 @@ export const createProgressUsecase = async (body: any, req: any) => {
       delayDays:        body.delayDays ? Number(body.delayDays) : null,
       delayReason:      body.delayReason ?? null,
       delayOtherReason: body.delayOtherReason ?? null,
-      generalRemarks:   body.generalRemarks ?? null
+      generalRemarks:   body.generalRemarks ?? null,
+      progressPhoto: body.progressPhoto ?? null
     },
     extractMeta(req)
   );
