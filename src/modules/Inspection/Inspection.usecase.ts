@@ -6,7 +6,7 @@ import {
   getProgressDetailService,
   saveAnswersService,
     getProgressDataService,
-    getProgressByFloorService
+    getProgressByModuleFloorService
 } from "./Inspection.service";
 
 const extractMeta = (req: any) => ({
@@ -94,5 +94,7 @@ export const saveAnswersUsecase = async (
   return saveAnswersService(progressId, answersWithFiles, extractMeta(req));
 };
 
-export const getProgressByFloorUsecase = async (floorId: string) =>
-  getProgressByFloorService(floorId);
+export const getProgressByModuleFloorUsecase = async (
+  moduleSlug: string,
+  floorId: string
+) => getProgressByModuleFloorService(moduleSlug, floorId);

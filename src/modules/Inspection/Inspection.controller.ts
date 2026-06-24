@@ -7,7 +7,7 @@ import {
   getProgressDetailUsecase,
   saveAnswersUsecase,
     getProgressDataUsecase,
-    getProgressByFloorUsecase
+    getProgressByModuleFloorUsecase
 } from "./Inspection.usecase";
 
 const getSingleValue = (val: any): string =>
@@ -132,13 +132,14 @@ export const saveAnswersController = async (
 };
 
 
-export const getProgressByFloorController = async (
+export const getProgressByModuleFloorController = async (
   req: Request,
   res: Response
 ) => {
   try {
+    const moduleSlug = getSingleValue(req.params.moduleSlug);
     const floorId = getSingleValue(req.params.floorId);
-    const data = await getProgressByFloorUsecase(floorId);
+    const data = await getProgressByModuleFloorUsecase(moduleSlug, floorId);
     res.status(200).json({ success: true, data });
   } catch (e: any) {
     res.status(400).json({ success: false, message: e.message });

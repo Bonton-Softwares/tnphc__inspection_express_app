@@ -8,7 +8,7 @@ import {
   getByModuleProjectSchema,
   progressParamSchema,
   deleteProgressParamSchema,
-    floorParamSchema
+  moduleFloorParamSchema
 } from "./Inspection.schema";
 import {
   getInspectionSetupController,
@@ -18,7 +18,7 @@ import {
   getProgressDetailController,
   saveAnswersController,
     getProgressDataController,
-    getProgressByFloorController
+    getProgressByModuleFloorController
 } from "./Inspection.controller";
 
 const router = express.Router();
@@ -64,9 +64,9 @@ router.get(
 
 
 router.get(
-  "/progress/floor/:floorId",
-  validateRequest(floorParamSchema, "params"),
-  getProgressByFloorController
+  "/progress/:moduleSlug/floor/:floorId",
+  validateRequest(moduleFloorParamSchema, "params"),
+  getProgressByModuleFloorController
 );
 // Update work-started date, delay details, or general remarks.
 router.put(
