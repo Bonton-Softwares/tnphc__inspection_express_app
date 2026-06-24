@@ -300,9 +300,20 @@ export const deleteProgressService = async (
 
 
 
-export const getProgressByFloorService = async (floorId: string) => {
+export const getProgressByModuleFloorService = async (
+  moduleSlug: string,
+  floorId: string
+) => {
+  const moduleName = moduleSlug.toUpperCase().replace(/-/g, "_");
+
+  const inspectionModule = await prisma.inspection_module.findFirst({
+    where: { name: { equals: moduleName, mode: "insensitive" } }
+  });
+
+  if (!inspectionModule) throw new Error(`Module '${moduleName}' not found`);
+
   const progressList = await prisma.inspection_progress.findMany({
-    where: { floorId, isActive: true },
+    where: { floorId, moduleId: inspectionModule.id, isActive: true },
     include: {
       block: true,
       floor: true,
@@ -312,11 +323,10 @@ export const getProgressByFloorService = async (floorId: string) => {
     orderBy: { roomNo: "asc" }
   });
 
-  if (!progressList.length) return { floor: null, rooms: [] };
+  if (!progressList.length) return { floor: null, module: moduleName, rooms: [] };
 
   const floor = progressList[0].floor;
 
-  // Group by roomNo
   const grouped: Record<string, typeof progressList> = {};
   for (const p of progressList) {
     const key = p.roomNo ?? "__no_room__";
@@ -335,17 +345,17 @@ export const getProgressByFloorService = async (floorId: string) => {
       : "NOT_STARTED",
     stages: records.map((r) => ({
       progressId: r.id,
-      stageId:    r.stageId,
-      stageName:  r.stage.name,
-      status:     r.status,
+      stageId: r.stageId,
+      stageName: r.stage.name,
+      status: r.status,
       workStartedDate: r.workStartedDate,
-      isDelay:    r.isDelay,
-      remarks:    r.remarks,
+      isDelay: r.isDelay,
+      remarks: r.remarks,
       progressPhoto: r.progressPhoto
     }))
   }));
 
-  return { floor, rooms };
+  return { floor, module: moduleName, rooms };
 };
 
 // ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
