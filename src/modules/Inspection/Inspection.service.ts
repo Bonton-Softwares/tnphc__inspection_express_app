@@ -352,6 +352,8 @@ export const getProgressByModuleFloorService = async (
       isDelay: r.isDelay,
       remarks: r.remarks,
       progressPhoto: r.progressPhoto
+    ? JSON.parse(r.progressPhoto as string)
+    : null 
     }))
   }));
 
