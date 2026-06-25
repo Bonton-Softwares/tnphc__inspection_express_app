@@ -51,6 +51,7 @@ router.get(
 // Returns existing progressId if the same combination already exists.
 router.post(
   "/progress",
+  upload.array("progressPhoto"),           // ← add this
   validateRequest(createProgressSchema, "body"),
   createProgressController
 );

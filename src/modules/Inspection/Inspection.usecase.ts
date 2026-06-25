@@ -25,12 +25,27 @@ export const getInspectionSetupUsecase = async (
 // ─── PROGRESS ──────────────────────────────────────────────────────
 
 export const createProgressUsecase = async (body: any, req: any) => {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  // Handle progressPhoto file uploads
+  let progressPhoto: string | null = null;
+  const files = req.files as Express.Multer.File[] | undefined;
+  if (files && files.length > 0) {
+    const fileJson = files.map((f) => ({
+      fileName: f.filename,
+      url: `${baseUrl}/uploads/${f.filename}`
+    }));
+    progressPhoto = JSON.stringify(fileJson);
+  } else if (body.progressPhoto) {
+    progressPhoto = body.progressPhoto; // fallback: plain string/URL
+  }
+
   return createProgressService(
     {
       projectId:        body.projectId,
       blockId:          body.blockId,
       floorId:          body.floorId,
-      roomNo:         body.roomName,
+      roomNo:           body.roomName,
       moduleStageId:    body.moduleStageId,
       workStartedDate:  body.workStartedDate ? new Date(body.workStartedDate) : null,
       isDelay:          body.isDelay === "true" || body.isDelay === true,
@@ -38,7 +53,7 @@ export const createProgressUsecase = async (body: any, req: any) => {
       delayReason:      body.delayReason ?? null,
       delayOtherReason: body.delayOtherReason ?? null,
       generalRemarks:   body.generalRemarks ?? null,
-      progressPhoto: body.progressPhoto ?? null
+      progressPhoto                           // ← now a JSON string of file info
     },
     extractMeta(req)
   );
