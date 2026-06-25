@@ -28,12 +28,16 @@ export const createProgressSchema = Joi.object({
 });
 
 export const updateProgressSchema = Joi.object({
-  workStartedDate: Joi.date().optional().allow(null),
-  isDelay:         booleanField,
-  delayDays:       Joi.number().integer().optional().allow(null),
-  delayReason:     Joi.string().optional().allow(null, ""),
+  workStartedDate:  Joi.date().optional().allow(null),
+  isDelay:          booleanField,
+  delayDays:        Joi.number().integer().optional().allow(null),
+  delayReason:      Joi.string().optional().allow(null, ""),
   delayOtherReason: Joi.string().optional().allow(null, ""),
-  generalRemarks:  Joi.string().optional().allow(null, "")
+  generalRemarks:   Joi.string().optional().allow(null, ""),
+  progressPhoto:    Joi.alternatives()        // ← add this
+    .try(Joi.array().items(Joi.string()), Joi.object())
+    .optional()
+    .allow(null)
 });
 
 // ─── ANSWERS ───────────────────────────────────────────────────────

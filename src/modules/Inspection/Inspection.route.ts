@@ -27,18 +27,14 @@ const router = express.Router();
 // Frontend sends the multer field name matching the question's image key.
 const answerUpload = upload.any();
 
-// ─── GET ───────────────────────────────────────────────────────────
 
-// Initial setup: blocks, floors, stages for module, existing progress records.
-// :module examples: framed-structure | load-bearing-structure | interior | exterior
 router.get(
   "/setup/:module/:projectId",
   validateRequest(getByModuleProjectSchema, "params"),
   getInspectionSetupController
 );
 
-// Progress detail: progress record + dynamic questions + saved answers.
-// Used after progress creation and for re-opening the form to edit.
+
 router.get(
   "/questions/:progressId",
   validateRequest(progressParamSchema, "params"),
@@ -72,6 +68,7 @@ router.get(
 // Update work-started date, delay details, or general remarks.
 router.put(
   "/progress/:progressId",
+  upload.array("progressPhoto"),              // ← add this
   validateRequest(progressParamSchema, "params"),
   validateRequest(updateProgressSchema, "body"),
   updateProgressController
