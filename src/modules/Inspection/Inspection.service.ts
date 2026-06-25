@@ -323,9 +323,21 @@ export const getProgressByModuleFloorService = async (
     orderBy: { roomNo: "asc" }
   });
 
-  if (!progressList.length) return { floor: null, module: moduleName, rooms: [] };
+  if (!progressList.length) {
+    return { floor: null, moduleId: inspectionModule.id, module: moduleName, rooms: [] };
+  }
 
   const floor = progressList[0].floor;
+
+  // Fetch all moduleStage mappings for this module once
+  const moduleStages = await prisma.module_stage.findMany({
+    where: { moduleId: inspectionModule.id }
+  });
+
+  // Build a quick lookup: stageId → moduleStageId
+  const stageToModuleStageMap = new Map(
+    moduleStages.map((ms) => [ms.stageId, ms.id])
+  );
 
   const grouped: Record<string, typeof progressList> = {};
   for (const p of progressList) {
@@ -346,18 +358,24 @@ export const getProgressByModuleFloorService = async (
     stages: records.map((r) => ({
       progressId: r.id,
       stageId: r.stageId,
+      moduleStageId: stageToModuleStageMap.get(r.stageId) ?? null,  // ← added
       stageName: r.stage.name,
       status: r.status,
       workStartedDate: r.workStartedDate,
       isDelay: r.isDelay,
       remarks: r.remarks,
       progressPhoto: r.progressPhoto
-    ? JSON.parse(r.progressPhoto as string)
-    : null 
+        ? JSON.parse(r.progressPhoto as string)
+        : null
     }))
   }));
 
-  return { floor, module: moduleName, rooms };
+  return {
+    floor,
+    moduleId: inspectionModule.id,
+    module: moduleName,
+    rooms
+  };
 };
 
 // ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
