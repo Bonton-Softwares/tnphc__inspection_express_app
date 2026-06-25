@@ -65,9 +65,23 @@ export const getProgressDataUsecase = async (
 
 export const updateProgressUsecase = async (
   progressId: string,
-  body:        any,
-  req:         any
-) => updateProgressService(progressId, body, extractMeta(req));
+  body: any,
+  req: any
+) => {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  // Handle progressPhoto file uploads
+  const files = req.files as Express.Multer.File[] | undefined;
+  if (files && files.length > 0) {
+    const fileJson = files.map((f) => ({
+      fileName: f.filename,
+      url: `${baseUrl}/uploads/${f.filename}`
+    }));
+    body.progressPhoto = JSON.stringify(fileJson);
+  }
+
+  return updateProgressService(progressId, body, extractMeta(req));
+};
 
 export const deleteProgressUsecase = async (progressId: string, req: any) =>
   deleteProgressService(progressId, extractMeta(req));
