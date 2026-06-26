@@ -1,9 +1,12 @@
+import prisma from "../../shared/prisma";
 import {
   createBuildingInspectionDB,
   getAllBuildingInspectionDB,
   getBuildingInspectionByProjectIdDB,
   updateBuildingInspectionDB,
-  deleteBuildingInspectionDB
+  deleteBuildingInspectionDB,
+  getBuildingInspectionSetupService,
+  getBuildingInspectionByIdDB
 } from "./BuildingInspection.service";
 
 // ─── helper: coerce "true"/"false" strings → boolean | null ───────────────
@@ -33,6 +36,9 @@ export const createBuildingInspectionUsecase = async (
 
   const data = {
     projectId: body.projectId,
+    blockId:   body.blockId ?? null,   // ← added
+  floorId:   body.floorId ?? null,   // ← added
+  roomNo:    body.roomNo  ?? null,
     structure: {
       alignment:          toBool(body.structureAlignment),
       alignmentPhoto:     getFiles("structureAlignmentPhoto"),
@@ -431,4 +437,15 @@ export const getBuildingInspectionByProjectIdUsecase = async (
 // ─── DELETE ───────────────────────────────────────────────────────────────
 export const deleteBuildingInspectionUsecase = async (id: string) => {
   return deleteBuildingInspectionDB(id);
+};
+
+export const getBuildingInspectionSetupUsecase = async (projectId: string) => {
+  return getBuildingInspectionSetupService(projectId);
+};
+
+
+export const getBuildingInspectionByIdUsecase = async (
+  buildingInspectionId: string
+) => {
+  return getBuildingInspectionByIdDB(buildingInspectionId);
 };

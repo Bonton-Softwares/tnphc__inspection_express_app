@@ -955,15 +955,17 @@ export const getProjectDashboardService = async (userId?: string) => {
   const projects = await prisma.project.findMany({
     where,
     include: {
-      landSiteInspection: { where: { isActive: true } },
+      landSiteInspection:         { where: { isActive: true } },
       preConstructionInspections: { where: { isActive: true } },
-      foundationProgresses: { where: { isActive: true } },
-      foundationQualityChecks: { where: { isActive: true } },
-      plinthStages: { where: { isActive: true } },
-      BuildingInspection: { where: { isActive: true } },
-      DevelopmentWork: { where: { isActive: true } },
+      foundationProgresses:       { where: { isActive: true } },
+      foundationQualityChecks:    { where: { isActive: true } },
+      plinthStages:               { where: { isActive: true } },
+      BuildingInspection: {
+        where: { isActive: true },
+        include: { developmentWork: true }  // ← nested, no direct project relation
+      },
       TakeoverBuildingInsepction: { where: { isActive: true } },
-      TakeoverDevelopmentWork: { where: { isActive: true } },
+      TakeoverDevelopmentWork:    { where: { isActive: true } },
       inspectionProgresses: {
         where: { isActive: true },
         include: {
@@ -973,16 +975,16 @@ export const getProjectDashboardService = async (userId?: string) => {
         },
       },
     },
-  });
+  }) as any[];
 
   // Load all inspection modules once
   const inspectionModules = await prisma.inspection_module.findMany();
   const moduleMap = new Map(inspectionModules.map((m) => [m.name.toLowerCase(), m.id]));
 
-  let assignedProjects = 0;
-  let ongoingProjects = 0;
-  let completedProjects = 0;
-  let totalInspections = 0;
+  let assignedProjects   = 0;
+  let ongoingProjects    = 0;
+  let completedProjects  = 0;
+  let totalInspections   = 0;
   let completedInspections = 0;
   let pendingInspections = 0;
 
@@ -993,14 +995,12 @@ export const getProjectDashboardService = async (userId?: string) => {
 
     const done: string[] = [];
 
-    if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
+    if (p.landSiteInspection.length > 0)        done.push("Land Site Inspection");
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
-    if (p.plinthStages.length > 0) done.push("Plinth");
+    if (p.plinthStages.length > 0)               done.push("Plinth");
 
     // ── Inspection-module based stages ────────────────────────
-    // Each module (Framed Structure, Load Bearing Structure, Interior, Exterior)
-    // is COMPLETED when ALL its inspection_progress records are COMPLETED.
     const moduleNames = [
       "Framed Structure",
       "Load Bearing Structure",
@@ -1013,7 +1013,7 @@ export const getProjectDashboardService = async (userId?: string) => {
       if (!moduleId) continue;
 
       const moduleProgresses = (p.inspectionProgresses as any[]).filter(
-        (ip) => ip.moduleId === moduleId
+        (ip: any) => ip.moduleId === moduleId
       );
 
       if (
@@ -1024,21 +1024,27 @@ export const getProjectDashboardService = async (userId?: string) => {
       }
     }
 
-    if (p.BuildingInspection.length > 0) done.push("Building Inspection");
-    if (p.DevelopmentWork.length > 0) done.push("Development Work");
-    if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
-    if (p.TakeoverDevelopmentWork.length > 0) done.push("Takeover Development Work");
+    if ((p.BuildingInspection as any[]).length > 0) done.push("Building Inspection");
 
-    const doneCount = done.length;
+    // ── DevelopmentWork checked via BuildingInspection ────────
+    const hasDevelopmentWork = (p.BuildingInspection as any[]).some(
+      (bi: any) => bi.developmentWork !== null
+    );
+    if (hasDevelopmentWork) done.push("Development Work");
+
+    if ((p.TakeoverBuildingInsepction as any[]).length > 0) done.push("Takeover Building Inspection");
+    if ((p.TakeoverDevelopmentWork    as any[]).length > 0) done.push("Takeover Development Work");
+
+    const doneCount    = done.length;
     const pendingCount = Math.max(0, selectedStageCount - doneCount);
 
-    totalInspections += selectedStageCount;
+    totalInspections     += selectedStageCount;
     completedInspections += doneCount;
-    pendingInspections += pendingCount;
+    pendingInspections   += pendingCount;
 
-    if (doneCount === 0) assignedProjects++;
-    else if (doneCount > 0 && pendingCount > 0) ongoingProjects++;
-    else completedProjects++;
+    if (doneCount === 0)                          assignedProjects++;
+    else if (doneCount > 0 && pendingCount > 0)   ongoingProjects++;
+    else                                           completedProjects++;
   }
 
   return {
@@ -1137,15 +1143,17 @@ export const getProjectsByUserService = async ({
             floors: { orderBy: { floorNumber: "asc" } },
           },
         },
-        landSiteInspection: { where: { isActive: true } },
+        landSiteInspection:         { where: { isActive: true } },
         preConstructionInspections: { where: { isActive: true } },
-        foundationProgresses: { where: { isActive: true } },
-        foundationQualityChecks: { where: { isActive: true } },
-        plinthStages: { where: { isActive: true } },
-        BuildingInspection: { where: { isActive: true } },
-        DevelopmentWork: { where: { isActive: true } },
+        foundationProgresses:       { where: { isActive: true } },
+        foundationQualityChecks:    { where: { isActive: true } },
+        plinthStages:               { where: { isActive: true } },
+        BuildingInspection: {
+          where: { isActive: true },
+          include: { developmentWork: true }  // ← nested, no direct project relation
+        },
         TakeoverBuildingInsepction: { where: { isActive: true } },
-        TakeoverDevelopmentWork: { where: { isActive: true } },
+        TakeoverDevelopmentWork:    { where: { isActive: true } },
         inspectionProgresses: {
           where: { isActive: true },
           include: { module: true, stage: true },
@@ -1154,17 +1162,17 @@ export const getProjectsByUserService = async ({
       orderBy: { createdAt: "desc" },
       skip,
       take,
-    }),
+    }) as Promise<any[]>,
     prisma.project.count({ where }),
   ]);
 
-  function getCompletedStageNames(p: (typeof projects)[0]): string[] {
+  function getCompletedStageNames(p: any): string[] {
     const done: string[] = [];
 
-    if (p.landSiteInspection.length > 0) done.push("Land Site Inspection");
+    if (p.landSiteInspection.length > 0)        done.push("Land Site Inspection");
     if (p.preConstructionInspections.length > 0) done.push("Pre Construction");
     if (p.foundationProgresses.length > 0 || p.foundationQualityChecks.length > 0) done.push("Foundation");
-    if (p.plinthStages.length > 0) done.push("Plinth");
+    if (p.plinthStages.length > 0)               done.push("Plinth");
 
     // ── Inspection-module based stages ────────────────────────
     const moduleNames = [
@@ -1179,7 +1187,7 @@ export const getProjectsByUserService = async ({
       if (!moduleId) continue;
 
       const moduleProgresses = (p.inspectionProgresses as any[]).filter(
-        (ip) => ip.moduleId === moduleId
+        (ip: any) => ip.moduleId === moduleId
       );
 
       if (
@@ -1190,10 +1198,16 @@ export const getProjectsByUserService = async ({
       }
     }
 
-    if (p.BuildingInspection.length > 0) done.push("Building Inspection");
-    if (p.DevelopmentWork.length > 0) done.push("Development Work");
-    if (p.TakeoverBuildingInsepction.length > 0) done.push("Takeover Building Inspection");
-    if (p.TakeoverDevelopmentWork.length > 0) done.push("Takeover Development Work");
+    if ((p.BuildingInspection as any[]).length > 0) done.push("Building Inspection");
+
+    // ── DevelopmentWork checked via BuildingInspection ────────
+    const hasDevelopmentWork = (p.BuildingInspection as any[]).some(
+      (bi: any) => bi.developmentWork !== null
+    );
+    if (hasDevelopmentWork) done.push("Development Work");
+
+    if ((p.TakeoverBuildingInsepction as any[]).length > 0) done.push("Takeover Building Inspection");
+    if ((p.TakeoverDevelopmentWork    as any[]).length > 0) done.push("Takeover Development Work");
 
     return done;
   }
@@ -1202,11 +1216,11 @@ export const getProjectsByUserService = async ({
     const isSpecialUnit = p.jurisdictionType === "SPECIAL_UNIT";
 
     const specialUnitMapping = p.projectAccessMappings.find(
-      (m) => !!m.specialUnitId
+      (m: any) => !!m.specialUnitId
     );
 
     const districtMappings = p.projectAccessMappings.filter(
-      (m) => !m.specialUnitId
+      (m: any) => !m.specialUnitId
     );
 
     const selectedStageCount = Array.isArray(p.selectedStages)
@@ -1238,10 +1252,10 @@ export const getProjectsByUserService = async ({
     const inspectionSummary = moduleNames.map((moduleName) => {
       const moduleId = moduleMap.get(moduleName.toLowerCase());
       const progresses = moduleId
-        ? (p.inspectionProgresses as any[]).filter((ip) => ip.moduleId === moduleId)
+        ? (p.inspectionProgresses as any[]).filter((ip: any) => ip.moduleId === moduleId)
         : [];
 
-      const total = progresses.length;
+      const total     = progresses.length;
       const completed = progresses.filter((ip: any) => ip.status === "COMPLETED").length;
       const inProgress = progresses.filter((ip: any) => ip.status === "IN_PROGRESS").length;
 
@@ -1268,8 +1282,8 @@ export const getProjectsByUserService = async ({
       location: p.location,
       departmentName: p.department?.name ?? null,
       selectedDistrictId: p.selectedDistrictId ?? null,
-      selectedDistrictName: (p as any).selectedDistrict?.name ?? null,
-      selectedDistrictType: (p as any).selectedDistrict?.type ?? null,
+      selectedDistrictName: p.selectedDistrict?.name ?? null,
+      selectedDistrictType: p.selectedDistrict?.type ?? null,
       jurisdictionType: p.jurisdictionType,
       accessType: isSpecialUnit ? null : p.accessType,
       hasSuperStructure: p.hasSuperStructure,
@@ -1279,8 +1293,8 @@ export const getProjectsByUserService = async ({
         : {
             accessType: p.accessType,
             districts: districtMappings
-              .filter((m) => m.districtId)
-              .map((m) => ({
+              .filter((m: any) => m.districtId)
+              .map((m: any) => ({
                 districtId: m.districtId,
                 districtName: m.district?.name ?? null,
                 districtType: m.district?.type ?? null,
@@ -1301,11 +1315,11 @@ export const getProjectsByUserService = async ({
       completedStageNames,
       pendingStages,
 
-      blocks: p.blocks.map((b) => ({
+      blocks: p.blocks.map((b: any) => ({
         blockId: b.id,
         blockName: b.blockName,
         totalFloors: b.totalFloors,
-        floors: b.floors.map((f) => ({
+        floors: b.floors.map((f: any) => ({
           floorId: f.id,
           floorName: f.floorName,
           floorNumber: f.floorNumber,

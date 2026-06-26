@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
 import {
   createBuildingInspectionUsecase,
-  getAllBuildingInspectionUsecase,
-  getBuildingInspectionByProjectIdUsecase,
+  getBuildingInspectionByIdUsecase,      // ← added
   updateBuildingInspectionUsecase,
-  deleteBuildingInspectionUsecase
+  deleteBuildingInspectionUsecase,
+  getBuildingInspectionSetupUsecase
 } from "./BuildingInspection.usecase";
 
 export const createBuildingInspection = async (req: Request, res: Response) => {
@@ -22,33 +22,21 @@ export const createBuildingInspection = async (req: Request, res: Response) => {
   }
 };
 
-export const getAllBuildingInspection = async (req: Request, res: Response) => {
+// ─── GET BY BUILDING INSPECTION ID ────────────────────────────────
+export const getBuildingInspectionById = async (req: Request, res: Response) => {
   try {
-    const projectId = req.params.projectId as string;
-    const result = await getAllBuildingInspectionUsecase(projectId);
-    res.status(200).json({ success: true, data: result });
-  } catch (err: any) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-};
-
-// Returns only the latest submission for a project as a single object
-export const getBuildingInspectionByProjectId = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const projectId = req.params.projectId as string;
-    const result = await getBuildingInspectionByProjectIdUsecase(projectId);
+    const buildingInspectionId = req.params.buildingInspectionId as string;
+    const result = await getBuildingInspectionByIdUsecase(buildingInspectionId);
     res.status(200).json({ success: true, data: result });
   } catch (err: any) {
     res.status(404).json({ success: false, message: err.message });
   }
 };
 
+// ─── UPDATE ───────────────────────────────────────────────────────
 export const updateBuildingInspection = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
+    const id     = req.params.buildingInspectionId as string;
     const userId = (req as any).user?.id;
     const result = await updateBuildingInspectionUsecase(
       id,
@@ -63,11 +51,23 @@ export const updateBuildingInspection = async (req: Request, res: Response) => {
   }
 };
 
+// ─── DELETE ───────────────────────────────────────────────────────
 export const deleteBuildingInspection = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
+    const id = req.params.buildingInspectionId as string;  // ← was req.params.id
     await deleteBuildingInspectionUsecase(id);
     res.status(200).json({ success: true, message: "Deleted" });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// ─── SETUP ────────────────────────────────────────────────────────
+export const getBuildingInspectionSetup = async (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.projectId as string;
+    const result = await getBuildingInspectionSetupUsecase(projectId);
+    res.status(200).json({ success: true, data: result });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
   }

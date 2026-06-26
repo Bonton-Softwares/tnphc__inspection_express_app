@@ -1,7 +1,10 @@
 import Joi from "joi";
 
 export const createBuildingInspectionSchema = Joi.object({
-  projectId: Joi.string().required(),
+   projectId: Joi.string().required(),
+  blockId:   Joi.string().uuid().optional().allow(null, ""),  // ← added
+  floorId:   Joi.string().uuid().optional().allow(null, ""),  // ← added
+  roomNo:    Joi.string().optional().allow(null, ""),
 
   // STRUCTURE
   structureAlignment: Joi.boolean().truthy("true").falsy("false").optional(),

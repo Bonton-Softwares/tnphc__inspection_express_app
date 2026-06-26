@@ -5,6 +5,7 @@ const strField   = Joi.string().optional().allow(null, "");
 const numField   = Joi.number().optional().allow(null);
 
 const commonFields = {
+  buildingInspectionId: Joi.string().uuid().required(),
   // SUMP & PUMP ROOM
   completionPercentage:  numField,
   sumpCapacity:          boolField,
