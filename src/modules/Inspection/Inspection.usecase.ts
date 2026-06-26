@@ -94,31 +94,45 @@ export const getProgressDetailUsecase = async (progressId: string) =>
 // ─── ANSWERS ───────────────────────────────────────────────────────
 // Image-type answers: store uploaded file info as stringified JSON in answer field.
 
+// Inspection.usecase.ts  — saveAnswersUsecase
 export const saveAnswersUsecase = async (
   progressId: string,
-  body:        any,
-  files:       any,
-  req:         any
+  body: any,
+  files: any,
+  req: any
 ) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
 
-  // Merge file uploads into answers where the question answer is a file key
-  const answersWithFiles = (body.answers as { questionId: string; answer: string }[]).map(
-    (item) => {
-      const fileKey = item.answer; // Frontend sends the multer field name as the answer value for image questions
-      const uploadedFiles = files?.[fileKey];
-
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileJson = uploadedFiles.map((f: any) => ({
-          fileName: f.filename,
-          url:      `${baseUrl}/uploads/${f.filename}`
-        }));
-        return { questionId: item.questionId, answer: JSON.stringify(fileJson) };
-      }
-
-      return item;
+  // upload.any() gives a flat array, not a keyed object
+  // Each file has f.fieldname matching the questionId the frontend used
+  const filesByField: Record<string, Express.Multer.File[]> = {};
+  if (Array.isArray(files)) {
+    for (const f of files) {
+      if (!filesByField[f.fieldname]) filesByField[f.fieldname] = [];
+      filesByField[f.fieldname].push(f);
     }
-  );
+  }
+
+  const answersWithFiles = (
+    body.answers as { questionId: string; answer?: string }[]
+  ).map((item) => {
+    // Frontend should send fieldname = questionId for image uploads
+    const uploadedFiles = filesByField[item.questionId] ?? filesByField[item.answer ?? ""];
+
+    if (uploadedFiles && uploadedFiles.length > 0) {
+      const fileJson = uploadedFiles.map((f: any) => ({
+        fileName: f.filename,
+        url: `${baseUrl}/uploads/${f.filename}`
+      }));
+      return {
+        questionId: item.questionId,
+        answer: JSON.stringify(fileJson),
+        images: fileJson.map((f: any) => ({ imageUrl: f.url }))
+      };
+    }
+
+    return item;
+  });
 
   return saveAnswersService(progressId, answersWithFiles, extractMeta(req));
 };
