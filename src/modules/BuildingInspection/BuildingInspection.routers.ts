@@ -3,8 +3,8 @@ import { upload } from "../../utils/multer";
 import { validateRequest } from "../../middleware/validateRequest";
 import {
   createBuildingInspection,
-  getAllBuildingInspection,
-  getBuildingInspectionByProjectId,
+  getBuildingInspectionSetup,
+  getBuildingInspectionById,
   updateBuildingInspection,
   deleteBuildingInspection
 } from "./BuildingInspection.controller";
@@ -53,6 +53,7 @@ const uploadFields = upload.fields([
   // LIFTS
   { name: "liftWorkingPhoto",            maxCount: 5 },
   { name: "liftSafetyPhoto",             maxCount: 5 },
+  { name: "liftCertificatePhoto",        maxCount: 5 },  // ← was missing
 
   // TERRACE
   { name: "terraceRoofTilesPhoto",       maxCount: 5 },
@@ -62,6 +63,10 @@ const uploadFields = upload.fields([
   { name: "terraceLeakageResultPhoto",   maxCount: 5 }
 ]);
 
+// ── Setup (must be before /:buildingInspectionId) ──────────
+router.get("/setup/:projectId", getBuildingInspectionSetup);
+
+// ── Create (upsert — backend decides create or update) ─────
 router.post(
   "/",
   uploadFields,
@@ -69,20 +74,18 @@ router.post(
   createBuildingInspection
 );
 
-router.get("/getAllBuildingInspection/:projectId", getAllBuildingInspection);
+// ── Get by buildingInspectionId ────────────────────────────
+router.get("/:buildingInspectionId", getBuildingInspectionById);
 
-router.get(
-  "/:projectId",
-  getBuildingInspectionByProjectId
-);
-
+// ── Update by buildingInspectionId ─────────────────────────
 router.put(
-  "/:id",
+  "/:buildingInspectionId",
   uploadFields,
   validateRequest(updateBuildingInspectionSchema),
   updateBuildingInspection
 );
 
-router.delete("/deleteBuildingInspection/:id", deleteBuildingInspection);
+// ── Soft delete ────────────────────────────────────────────
+router.delete("/:buildingInspectionId", deleteBuildingInspection);
 
 export default router;

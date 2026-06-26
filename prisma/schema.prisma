@@ -302,7 +302,7 @@ selectedDistrict      masterDistrict? @relation("ProjectSelectedDistrict", field
   inspectionProgresses inspection_progress[]
 
   BuildingInspection         BuildingInspection[]
-  DevelopmentWork            DevelopmentWork[]
+  
   TakeoverBuildingInsepction TakeoverBuildingInspection[]
   TakeoverDevelopmentWork    TakeoverDevelopmentWork[]
 
@@ -860,7 +860,10 @@ model PlinthStage {
 
 model BuildingInspection {
   id                 String @id @default(uuid())
-  projectId          String
+   projectId String
+  blockId   String?
+  floorId   String?
+  roomNo    String?
   structure          Json?
   painting           Json?
   tilingFlooring     Json?
@@ -879,11 +882,21 @@ model BuildingInspection {
   isActive    Boolean  @default(true) @map("is_active")
 
   project project @relation(fields: [projectId], references: [id])
+    block   project_block? @relation(fields: [blockId], references: [id])
+  floor   project_floor? @relation(fields: [floorId], references: [id])
+
+  developmentWork DevelopmentWork?
+
+  @@index([projectId])
+  @@index([blockId])
+  @@index([floorId])
+
+  @@unique([projectId, blockId, floorId, roomNo])
 }
 
 model DevelopmentWork {
   id                  String @id @default(uuid())
-  projectId           String
+  buildingInspectionId String @unique
   sumpPump            Json?
   borewell            Json?
   inspectionChamber   Json?
@@ -903,7 +916,9 @@ model DevelopmentWork {
   updatedById String?  @map("updated_by")
   isActive    Boolean  @default(true) @map("is_active")
 
-  project project @relation(fields: [projectId], references: [id])
+    buildingInspection BuildingInspection @relation(fields: [buildingInspectionId], references: [id])
+
+  @@index([buildingInspectionId])
 }
 
 model TakeoverBuildingInspection {
@@ -1004,6 +1019,7 @@ model project_block {
   floors project_floor[]
 
 inspectionProgresses inspection_progress[]
+buildingInspections BuildingInspection[]
 
   @@unique([projectId, blockName])
 }
@@ -1025,6 +1041,7 @@ model project_floor {
   updatedAt   DateTime @updatedAt
 
  inspectionProgresses inspection_progress[]
+ buildingInspections BuildingInspection[]
 
   @@unique([blockId, floorName])
 }

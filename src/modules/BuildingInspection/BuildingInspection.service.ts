@@ -7,14 +7,19 @@ export const createBuildingInspectionDB = async (
   roleId?: string,
   ipAddress?: string
 ) => {
-  // ── Check if a record already exists for this project ──────
+  // ── Check by projectId + blockId + floorId + roomNo ────────
   const existing = await prisma.buildingInspection.findFirst({
-    where: { projectId: data.projectId, isActive: true },
+    where: {
+      projectId: data.projectId,
+      blockId:   data.blockId  ?? null,   // ← added
+      floorId:   data.floorId  ?? null,   // ← added
+      roomNo:    data.roomNo   ?? null,   // ← added
+      isActive:  true
+    },
     orderBy: { createdAt: "desc" }
   });
 
   if (existing) {
-    // ── Already exists → merge & update (same ID) ────────────
     const oldValue = { ...existing };
 
     const mergedData: any = { updatedById: data.createdById ?? null };
@@ -27,7 +32,6 @@ export const createBuildingInspectionDB = async (
 
     for (const section of sections) {
       if (data[section] !== undefined) {
-        // Deep merge: spread existing JSON + new fields
         const existingSection =
           (existing as any)[section] &&
           typeof (existing as any)[section] === "object"
@@ -39,38 +43,38 @@ export const createBuildingInspectionDB = async (
 
     const updated = await prisma.buildingInspection.update({
       where: { id: existing.id },
-      data: mergedData
+      data:  mergedData
     });
 
     await logAudit({
       tableName: "BuildingInspection",
-      recordId: existing.id,
-      action: "UPDATE",
+      recordId:  existing.id,
+      action:    "UPDATE",
       oldValue,
-      newValue: updated,
+      newValue:  updated,
       userId,
       roleId,
       ipAddress
     });
 
-    return updated;
+    return { buildingInspectionId: existing.id, isExisting: true };  // ← return id + flag
   }
 
-  // ── No record yet → create fresh ─────────────────────────
+  // ── No record yet → create fresh ──────────────────────────
   const created = await prisma.buildingInspection.create({ data });
 
   await logAudit({
     tableName: "BuildingInspection",
-    recordId: created.id,
-    action: "CREATE",
-    oldValue: null,
-    newValue: created,
+    recordId:  created.id,
+    action:    "CREATE",
+    oldValue:  null,
+    newValue:  created,
     userId,
     roleId,
     ipAddress
   });
 
-  return created;
+  return { buildingInspectionId: created.id, isExisting: false };  // ← return id + flag
 };
 
 export const getAllBuildingInspectionDB = (projectId: string) => {
@@ -189,4 +193,84 @@ export const deleteBuildingInspectionDB = async (
   });
 
   return deleted;
+};
+
+
+export const getBuildingInspectionSetupService = async (projectId: string) => {
+  // ── 1. Load project with blocks + floors ────────────────────
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      blocks: {
+        include: {
+          floors: { orderBy: { floorNumber: "asc" } }
+        }
+      }
+    }
+  });
+
+  if (!project) throw new Error("Project not found");
+
+  const structureType: "FRAMED" | "LOAD_BEARING" = project.hasSuperStructure
+    ? "FRAMED"
+    : "LOAD_BEARING";
+
+  // ── 2. Build blocks/floors payload ──────────────────────────
+  const blocks =
+    structureType === "FRAMED"
+      ? project.blocks.map((b) => ({
+          id: b.id,
+          name: b.blockName,
+          totalFloors: b.totalFloors,
+          floors: b.floors.map((f) => ({
+            id: f.id,
+            name: f.floorName,
+            floorNumber: f.floorNumber
+          }))
+        }))
+      : [];
+
+  // ── 3. Existing building inspection records ──────────────────
+  const existingInspections = await prisma.buildingInspection.findMany({
+    where: { projectId, isActive: true },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      projectId: true,
+      blockId: true,
+      floorId: true,
+      roomNo: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  });
+
+  return {
+    project: {
+      id: project.id,
+      name: project.projectName,
+      hasSuperStructure: project.hasSuperStructure,
+      structureType
+    },
+    structureType,
+    blocks,
+    existingInspections: existingInspections.map((i) => ({
+      buildingInspectionId: i.id,
+      blockId: i.blockId ?? null,
+      floorId: i.floorId ?? null,
+      roomNo:  i.roomNo  ?? null
+    }))
+  };
+};
+
+export const getBuildingInspectionByIdDB = async (
+  buildingInspectionId: string
+) => {
+  const record = await prisma.buildingInspection.findFirst({
+    where: { id: buildingInspectionId, isActive: true }
+  });
+
+  if (!record) throw new Error("Building inspection record not found");
+
+  return record;
 };
