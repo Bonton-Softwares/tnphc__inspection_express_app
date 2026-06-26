@@ -400,9 +400,29 @@ export const getProgressDetailService = async (progressId: string) => {
     orderBy: { sortOrder: "asc" }
   });
 
-  const answers = await prisma.inspection_answer.findMany({
+  const rawAnswers = await prisma.inspection_answer.findMany({
     where:   { progressId },
     include: { images: true }
+  });
+
+  // Build a lookup of IMAGE-type question IDs
+  const imageQuestionIds = new Set(
+    questions
+      .filter(q => q.fieldType === "IMAGE")
+      .map(q => q.id)
+  );
+
+  // Parse stringified JSON answers for IMAGE fields
+  const answers = rawAnswers.map(answer => {
+    if (imageQuestionIds.has(answer.questionId) && typeof answer.answer === "string") {
+      try {
+        const parsed = JSON.parse(answer.answer);
+        return { ...answer, answer: parsed }; // now an array of { fileName, url }
+      } catch {
+        return answer; // leave as-is if parsing fails
+      }
+    }
+    return answer;
   });
 
   const status = computeStatus(progress, questions, answers);
@@ -529,7 +549,12 @@ export const computeStatus = (
 
   const answeredIds = new Set(
     answers
-      .filter((a) => a.answer && a.answer.trim() !== "")
+      .filter((a) => {
+        if (a.answer === null || a.answer === undefined) return false;
+        // Handle cases where answer might not be a string (e.g. parsed JSON array/object)
+        const val = typeof a.answer === "string" ? a.answer : JSON.stringify(a.answer);
+        return val.trim() !== "";
+      })
       .map((a) => a.questionId)
   );
 
