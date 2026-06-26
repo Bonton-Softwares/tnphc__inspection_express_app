@@ -41,12 +41,14 @@ export const updateProgressSchema = Joi.object({
 });
 
 // ─── ANSWERS ───────────────────────────────────────────────────────
+// Inspection.schema.ts
 export const saveAnswersSchema = Joi.object({
   answers: Joi.array()
     .items(
       Joi.object({
         questionId: Joi.string().uuid().required(),
-        answer:     Joi.string().required()
+        answer:     Joi.string().optional().allow(null, ""),  // ← was required()
+        optionId:   Joi.string().uuid().optional().allow(null, "")
       })
     )
     .min(1)
