@@ -1165,6 +1165,8 @@ model inspection_question {
 
   isRequired Boolean @default(false)
 
+  conditionalRendering Json?
+
   sortOrder Int @default(1)
 
   isActive Boolean @default(true)
