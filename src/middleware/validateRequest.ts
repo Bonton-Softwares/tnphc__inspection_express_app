@@ -14,8 +14,8 @@ export const validateRequest = (
       });
     }
 
-    // ✅ Parse JSON fields from multipart/form-data
-    if (property === "body") {
+    // ✅ FIX: guard against undefined/null req.body (e.g. GET requests)
+    if (property === "body" && req.body && typeof req.body === "object") {
       Object.keys(req.body).forEach((key) => {
         const value = req.body[key];
 
