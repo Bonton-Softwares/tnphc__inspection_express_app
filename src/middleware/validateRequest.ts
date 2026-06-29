@@ -46,8 +46,12 @@ export const validateRequest = (
       });
     }
 
-    // ✅ Assign converted/parsed values back
-    (req as any)[property] = value;
+    // ✅ FIX: use defineProperty so req.query (read-only getter) can be overwritten
+    Object.defineProperty(req, property, {
+      value,
+      writable: true,
+      configurable: true,
+    });
 
     next();
   };
