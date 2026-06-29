@@ -380,6 +380,8 @@ export const getProgressByModuleFloorService = async (
 
 // ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
 
+// ─── PROGRESS + QUESTIONS + ANSWERS ───────────────────────────────
+
 export const getProgressDetailService = async (progressId: string) => {
   const progress = await prisma.inspection_progress.findUnique({
     where:   { id: progressId },
@@ -417,21 +419,198 @@ export const getProgressDetailService = async (progressId: string) => {
     if (imageQuestionIds.has(answer.questionId) && typeof answer.answer === "string") {
       try {
         const parsed = JSON.parse(answer.answer);
-        return { ...answer, answer: parsed }; // now an array of { fileName, url }
+        return { ...answer, answer: parsed };
       } catch {
-        return answer; // leave as-is if parsing fails
+        return answer;
       }
     }
     return answer;
   });
 
+  // ── CHANGE 1: Build question map and enrich conditionalRendering ──
+
+  // Build a flat map of id → question for O(1) lookups
+  const questionMap = new Map(questions.map(q => [q.id, q]));
+
+  // Enrich each question's conditionalRendering by replacing questionIds
+  // with full question objects. DB is never touched — only the response shape changes.
+  const enrichedQuestions = questions.map(q => {
+    if (!q.conditionalRendering) return q;
+
+    let parsed: any;
+    try {
+      parsed = typeof q.conditionalRendering === "string"
+        ? JSON.parse(q.conditionalRendering as string)
+        : q.conditionalRendering;
+    } catch {
+      return q; // leave malformed JSON as-is
+    }
+
+    if (!parsed?.rules || !Array.isArray(parsed.rules)) return q;
+
+    const enrichedRules = parsed.rules.map((rule: any) => {
+      const questionIds: string[] = rule.questionIds ?? [];
+      const resolvedQuestions = questionIds
+        .map((id: string) => {
+          const child = questionMap.get(id);
+          if (!child) return null;
+          return {
+            id:           child.id,
+            question:     child.question,
+            fieldType:    child.fieldType,
+            type:         child.type,
+            materialName: child.materialName,
+            isRequired:   child.isRequired,
+            options:      child.options,
+            sortOrder:    child.sortOrder,
+            minLimit:     child.minLimit,
+            maxLimit:     child.maxLimit,
+          };
+        })
+        .filter(Boolean);
+
+      // Return the rule with `questions` (full objects) replacing `questionIds`
+      const { questionIds: _drop, ...ruleWithoutIds } = rule;
+      return { ...ruleWithoutIds, questions: resolvedQuestions };
+    });
+
+    return {
+      ...q,
+      conditionalRendering: { rules: enrichedRules }
+    };
+  });
+
+  // ── END CHANGE 1 ─────────────────────────────────────────────────
+
   const status = computeStatus(progress, questions, answers);
 
   return {
     progress: { ...progress, status },
-    questions,
+    questions: enrichedQuestions,  // enriched questions in response
     answers
   };
+};
+
+
+// ─── DYNAMIC STATUS ────────────────────────────────────────────────
+
+export const computeStatus = (
+  progress:  { id: string } | null,
+  questions: { id: string; isRequired: boolean; conditionalRendering?: any }[],
+  answers:   { questionId: string; answer?: string | null }[]
+): "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" => {
+  if (!progress)            return "NOT_STARTED";
+  if (answers.length === 0) return "IN_PROGRESS";
+
+  const answeredIds = new Set(
+    answers
+      .filter((a) => {
+        if (a.answer === null || a.answer === undefined) return false;
+        const val = typeof a.answer === "string" ? a.answer : JSON.stringify(a.answer);
+        return val.trim() !== "";
+      })
+      .map((a) => a.questionId)
+  );
+
+  // ── CHANGE 2: Resolve which questions are currently visible ───────
+  //
+  // A question is "hidden" when it appears inside a conditionalRendering
+  // rule whose triggering value does NOT match the current answer of the
+  // parent question.
+  //
+  // Strategy:
+  //   1. Build a map of parent answer values: questionId → answered value
+  //   2. Walk every question that has conditionalRendering
+  //   3. For each rule, check if the parent's answer matches rule.value
+  //   4. Collect question IDs that are explicitly hidden (rule didn't match)
+  //
+  // A question that is never referenced in any conditionalRendering block
+  // is always visible.
+
+  // Map: questionId → current string answer (lowercased for bool comparison)
+  const answerValueMap = new Map(
+    answers
+      .filter(a => a.answer !== null && a.answer !== undefined)
+      .map(a => [
+        a.questionId,
+        typeof a.answer === "string" ? a.answer.trim().toLowerCase() : String(a.answer)
+      ])
+  );
+
+  // Collect IDs that are conditionally hidden
+  const hiddenQuestionIds = new Set<string>();
+
+  for (const q of questions) {
+    if (!q.conditionalRendering) continue;
+
+    let parsed: any;
+    try {
+      parsed = typeof q.conditionalRendering === "string"
+        ? JSON.parse(q.conditionalRendering as string)
+        : q.conditionalRendering;
+    } catch {
+      continue;
+    }
+
+    if (!parsed?.rules || !Array.isArray(parsed.rules)) continue;
+
+    const currentAnswer = answerValueMap.get(q.id);
+
+    for (const rule of parsed.rules) {
+      // Normalise the rule's trigger value to a string for comparison.
+      // DB stores booleans as true/false but answers arrive as strings.
+      const ruleValue = String(rule.value).toLowerCase(); // "true" | "false" | any string
+
+      const ruleMatches = currentAnswer === ruleValue;
+
+      const childIds: string[] = rule.questionIds ?? [];
+
+      if (!ruleMatches) {
+        // This rule's children are NOT visible right now
+        childIds.forEach(id => hiddenQuestionIds.add(id));
+      }
+    }
+  }
+
+  // A question that is hidden in ANY rule but also visible in ANOTHER
+  // matched rule should be considered visible. Remove from hidden set
+  // if it appears in a matching rule.
+  for (const q of questions) {
+    if (!q.conditionalRendering) continue;
+
+    let parsed: any;
+    try {
+      parsed = typeof q.conditionalRendering === "string"
+        ? JSON.parse(q.conditionalRendering as string)
+        : q.conditionalRendering;
+    } catch {
+      continue;
+    }
+
+    if (!parsed?.rules || !Array.isArray(parsed.rules)) continue;
+
+    const currentAnswer = answerValueMap.get(q.id);
+
+    for (const rule of parsed.rules) {
+      const ruleValue   = String(rule.value).toLowerCase();
+      const ruleMatches = currentAnswer === ruleValue;
+      const childIds: string[] = rule.questionIds ?? [];
+
+      if (ruleMatches) {
+        // These children ARE visible — remove from hidden set
+        childIds.forEach(id => hiddenQuestionIds.delete(id));
+      }
+    }
+  }
+
+  // ── END CHANGE 2 ─────────────────────────────────────────────────
+
+  // Only required questions that are currently visible must be answered
+  const allRequiredAnswered = questions
+    .filter(q => q.isRequired && !hiddenQuestionIds.has(q.id))
+    .every(q => answeredIds.has(q.id));
+
+  return allRequiredAnswered ? "COMPLETED" : "IN_PROGRESS";
 };
 
 // ─── SAVE ANSWERS (upsert per questionId) ─────────────────────────
@@ -539,28 +718,3 @@ export const saveAnswersService = async (
 
 // ─── DYNAMIC STATUS ────────────────────────────────────────────────
 
-export const computeStatus = (
-  progress:  { id: string } | null,
-  questions: { id: string; isRequired: boolean }[],
-  answers:   { questionId: string; answer?: string | null }[]
-): "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" => {
-  if (!progress)            return "NOT_STARTED";
-  if (answers.length === 0) return "IN_PROGRESS";
-
-  const answeredIds = new Set(
-    answers
-      .filter((a) => {
-        if (a.answer === null || a.answer === undefined) return false;
-        // Handle cases where answer might not be a string (e.g. parsed JSON array/object)
-        const val = typeof a.answer === "string" ? a.answer : JSON.stringify(a.answer);
-        return val.trim() !== "";
-      })
-      .map((a) => a.questionId)
-  );
-
-  const allRequiredAnswered = questions
-    .filter((q) => q.isRequired)
-    .every((q) => answeredIds.has(q.id));
-
-  return allRequiredAnswered ? "COMPLETED" : "IN_PROGRESS";
-};
