@@ -1157,8 +1157,10 @@ export const getProjectsByUserService = async ({
           where: { isActive: true },
           include: { developmentWork: true }  // ← nested, no direct project relation
         },
-        TakeoverBuildingInsepction: { where: { isActive: true } },
-        TakeoverDevelopmentWork:    { where: { isActive: true } },
+        TakeoverBuildingInsepction: {
+  where: { isActive: true },
+  include: { developmentWork: true }
+},
         inspectionProgresses: {
           where: { isActive: true },
           include: { module: true, stage: true },
@@ -1210,10 +1212,12 @@ export const getProjectsByUserService = async ({
       (bi: any) => bi.developmentWork !== null
     );
     if (hasDevelopmentWork) done.push("Development Work");
+if ((p.TakeoverBuildingInsepction as any[]).length > 0) done.push("Takeover Building Inspection");
 
-    if ((p.TakeoverBuildingInsepction as any[]).length > 0) done.push("Takeover Building Inspection");
-    if ((p.TakeoverDevelopmentWork    as any[]).length > 0) done.push("Takeover Development Work");
-
+const hasTakeoverDevelopmentWork = (p.TakeoverBuildingInsepction as any[]).some(
+  (tbi: any) => tbi.developmentWork !== null
+);
+if (hasTakeoverDevelopmentWork) done.push("Takeover Development Work");
     return done;
   }
 
