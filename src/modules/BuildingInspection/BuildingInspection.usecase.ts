@@ -6,7 +6,8 @@ import {
   updateBuildingInspectionDB,
   deleteBuildingInspectionDB,
   getBuildingInspectionSetupService,
-  getBuildingInspectionByIdDB
+  getBuildingInspectionByIdDB,
+  getBuildingInspectionByFloorService
 } from "./BuildingInspection.service";
 
 // ─── helper: coerce "true"/"false" strings → boolean | null ───────────────
@@ -448,4 +449,10 @@ export const getBuildingInspectionByIdUsecase = async (
   buildingInspectionId: string
 ) => {
   return getBuildingInspectionByIdDB(buildingInspectionId);
+};
+
+export const getBuildingInspectionByFloorUsecase = async (
+  floorId: string
+) => {
+  return getBuildingInspectionByFloorService(floorId);
 };

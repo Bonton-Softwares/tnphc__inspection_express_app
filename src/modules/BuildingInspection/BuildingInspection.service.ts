@@ -274,3 +274,80 @@ export const getBuildingInspectionByIdDB = async (
 
   return record;
 };
+
+export const getBuildingInspectionByFloorService = async (
+  floorId: string
+) => {
+  const inspections = await prisma.buildingInspection.findMany({
+    where: {
+      floorId,
+      isActive: true
+    },
+    include: {
+      block: true,
+      floor: true,
+      developmentWork: true
+    },
+    orderBy: {
+      roomNo: "asc"
+    }
+  });
+
+  if (!inspections.length) {
+    return {
+      floor: null,
+      rooms: []
+    };
+  }
+
+  const floor = inspections[0].floor;
+
+  const rooms = inspections.map((i) => ({
+    buildingInspectionId: i.id,
+    projectId: i.projectId,
+    blockId: i.blockId,
+    blockName: i.block?.blockName ?? null,
+    floorId: i.floorId,
+    roomNo: i.roomNo,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
+
+    buildingInspection: {
+      structure: i.structure,
+      painting: i.painting,
+      tilingFlooring: i.tilingFlooring,
+      falseCeiling: i.falseCeiling,
+      plumbingSystem: i.plumbingSystem,
+      electricalSystem: i.electricalSystem,
+      doorsWindows: i.doorsWindows,
+      lifts: i.lifts,
+      fireFightingSystem: i.fireFightingSystem,
+      terraceInspection: i.terraceInspection
+    },
+
+    developmentWork: i.developmentWork
+      ? {
+          developmentWorkId: i.developmentWork.id,
+          sumpPump: i.developmentWork.sumpPump,
+          borewell: i.developmentWork.borewell,
+          inspectionChamber: i.developmentWork.inspectionChamber,
+          stormWaterDrains: i.developmentWork.stormWaterDrains,
+          sullageDrain: i.developmentWork.sullageDrain,
+          road: i.developmentWork.road,
+          paverBlock: i.developmentWork.paverBlock,
+          compoundWall: i.developmentWork.compoundWall,
+          rainWaterHarvesting: i.developmentWork.rainWaterHarvesting,
+          landScaping: i.developmentWork.landScaping,
+          otherDefects: i.developmentWork.otherDefects,
+          generalRemarks: i.developmentWork.generalRemarks,
+          createdAt: i.developmentWork.createdAt,
+          updatedAt: i.developmentWork.updatedAt
+        }
+      : null
+  }));
+
+  return {
+    floor,
+    rooms
+  };
+};

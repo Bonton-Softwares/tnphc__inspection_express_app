@@ -4,7 +4,8 @@ import {
   getBuildingInspectionByIdUsecase,      // ← added
   updateBuildingInspectionUsecase,
   deleteBuildingInspectionUsecase,
-  getBuildingInspectionSetupUsecase
+  getBuildingInspectionSetupUsecase,
+  getBuildingInspectionByFloorUsecase
 } from "./BuildingInspection.usecase";
 
 export const createBuildingInspection = async (req: Request, res: Response) => {
@@ -70,5 +71,26 @@ export const getBuildingInspectionSetup = async (req: Request, res: Response) =>
     res.status(200).json({ success: true, data: result });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const getBuildingInspectionByFloorController = async (
+  req: Request<{ floorId: string }>,
+  res: Response
+) => {
+  try {
+    const floorId = req.params.floorId;
+
+    const data = await getBuildingInspectionByFloorUsecase(floorId);
+
+    res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (err: any) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
   }
 };

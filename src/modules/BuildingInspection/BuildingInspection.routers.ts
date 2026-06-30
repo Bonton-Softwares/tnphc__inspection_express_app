@@ -6,7 +6,8 @@ import {
   getBuildingInspectionSetup,
   getBuildingInspectionById,
   updateBuildingInspection,
-  deleteBuildingInspection
+  deleteBuildingInspection,
+  getBuildingInspectionByFloorController
 } from "./BuildingInspection.controller";
 import {
   createBuildingInspectionSchema,
@@ -76,6 +77,11 @@ router.post(
 
 // ── Get by buildingInspectionId ────────────────────────────
 router.get("/:buildingInspectionId", getBuildingInspectionById);
+
+router.get(
+  "/floor/:floorId",
+  getBuildingInspectionByFloorController
+);
 
 // ── Update by buildingInspectionId ─────────────────────────
 router.put(

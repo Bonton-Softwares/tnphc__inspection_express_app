@@ -17,16 +17,17 @@ import { renderInteriorsData }       from "../stage-data/interiors.data";
 import { renderExteriorsData }       from "../stage-data/exteriors.data";
 import { renderDevelopmentData }     from "../stage-data/development.data";
 import { renderTakeoverData }        from "../stage-data/takeover.data";
+import { renderModuleInspectionData } from "../stage-data/moduleInspection.data";
 
 const STAGE_RENDERERS: Record<string, (doc: any, data: any) => Promise<void> | void> = {
   "Land Site Inspection":     renderLandSiteData,
   "Pre-Construction":         renderPreConstructionData,
   "Foundation Stage":         renderFoundationData,
   "Plinth Stage":             renderPlinthData,
-  "Superstructure Stage":     renderSuperStructureData,
-  "Non Superstructure Stage": renderSuperStructureData,
-  "Interiors":                renderInteriorsData,
-  "Exteriors":                renderExteriorsData,
+  "Framed Structure":         renderModuleInspectionData,
+  "Load Bearing Structure":   renderModuleInspectionData,
+  "Interiors":                renderModuleInspectionData,
+  "Exteriors":                renderModuleInspectionData,
   "Development Work":         renderDevelopmentData,
   "Take Over":                renderTakeoverData,
 };

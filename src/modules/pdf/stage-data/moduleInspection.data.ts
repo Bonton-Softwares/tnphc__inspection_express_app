@@ -25,7 +25,7 @@ import { renderPhotoImages } from "../helpers/renderPhotos";
  *           status: string,
  *           workStartedDate, isDelay, delayDays, delayReason, remarks,
  *           progressPhoto,
- *           answers: [{ question: string, fieldType: string, value: string, photos?: any }]
+ *           answers: [{ question: string, fieldType: string, value: any }]
  *         }]
  *       }]
  *     }]
@@ -77,7 +77,7 @@ export async function renderModuleInspectionData(doc: any, stageData: any) {
     for (const floor of block.floors ?? []) {
       for (const room of floor.rooms ?? []) {
         for (const stage of room.stages ?? []) {
-          if (!stage.answers?.length && !stage.remarks) continue;
+          if (!stage.answers?.length && !stage.remarks && !stage.workStartedDate) continue;
 
           checkPageBreak(doc, 30);
           const roomLabel = room.roomNo ? ` / Room ${room.roomNo}` : "";
@@ -95,7 +95,10 @@ export async function renderModuleInspectionData(doc: any, stageData: any) {
             { label: "Remarks",      value: stage.remarks },
             ...(stage.answers ?? [])
               .filter((a: any) => a.fieldType !== "IMAGE")
-              .map((a: any) => ({ label: a.question, value: a.value })),
+              .map((a: any) => ({
+                label: a.question,
+                value: Array.isArray(a.value) ? a.value.length : a.value,
+              })),
           ]);
 
           if (stage.progressPhoto) {
