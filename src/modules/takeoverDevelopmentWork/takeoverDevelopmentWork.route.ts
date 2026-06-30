@@ -32,9 +32,9 @@ router.post(
   ctrl.createTakeoverDevelopmentWork
 );
 
-// ─── GET by buildingInspectionId ───────────────────────────────────
+// ─── GET by takeoverBuildingInspectionId ───────────────────────────────────
 router.get(
-  "/getTakeoverDevelopmentWork/:buildingInspectionId",
+  "/:takeoverBuildingInspectionId",
   ctrl.getTakeoverDevelopmentWorkByBuildingInspectionId
 );
 

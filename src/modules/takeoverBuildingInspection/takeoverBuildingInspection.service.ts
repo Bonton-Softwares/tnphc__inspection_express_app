@@ -229,3 +229,59 @@ export const getTakeoverBuildingInspectionByProjectIdDB = async (
 
   return record ? [record] : [];
 };
+
+export const getTakeoverBuildingInspectionByFloorService = async (
+  floorId: string
+) => {
+  const inspections = await prisma.takeoverBuildingInspection.findMany({
+    where: {
+      floorId,
+      isActive: true
+    },
+    include: {
+      block: true,
+      floor: true
+    },
+    orderBy: {
+      roomNo: "asc"
+    }
+  });
+
+  if (!inspections.length) {
+    return {
+      floor: null,
+      rooms: []
+    };
+  }
+
+  const floor = inspections[0].floor;
+
+  const rooms = inspections.map((i) => ({
+    buildingInspectionId: i.id,
+    projectId: i.projectId,
+    blockId: i.blockId,
+    blockName: i.block?.blockName ?? null,
+    floorId: i.floorId,
+    roomNo: i.roomNo,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
+
+    buildingInspection: {
+      structure: i.structure,
+      painting: i.painting,
+      tilingFlooring: i.tilingFlooring,
+      falseCeiling: i.falseCeiling,
+      plumbingSystem: i.plumbingSystem,
+      electricalSystem: i.electricalSystem,
+      doorsWindows: i.doorsWindows,
+      lifts: i.lifts,
+      fireFightingSystem: i.fireFightingSystem,
+      terraceInspection: i.terraceInspection
+    }
+  }));
+
+  return {
+    floor,
+    rooms
+  };
+};
