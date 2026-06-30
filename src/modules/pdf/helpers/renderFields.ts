@@ -50,11 +50,21 @@ export function renderFields(
 
       // label
       applyFont(doc, T.fonts.small, true, T.colors.subtext);
-      doc.text(field.label, x + 4, y + 5, { width: labelW - 6, ellipsis: true });
+      doc.text(field.label, x + 4, y + 5, {
+        width:     labelW - 6,
+        height:    rowH - 8,
+        ellipsis:  true,
+        lineBreak: false,
+      });
 
       // value
       applyFont(doc, T.fonts.small, false, T.colors.text);
-      doc.text(val, x + labelW + 4, y + 5, { width: valW - 6, ellipsis: true });
+      doc.text(val, x + labelW + 4, y + 5, {
+        width:     valW - 6,
+        height:    rowH - 8,
+        ellipsis:  true,
+        lineBreak: false,
+      });
     });
 
     // bottom border

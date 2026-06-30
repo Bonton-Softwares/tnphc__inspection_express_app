@@ -27,9 +27,13 @@ export function checkPageBreak(doc: any, needed = 60) {
 }
 
 /**
- * Renders a bold section heading with a coloured bar.
- * Uses explicit y coordinates + lineBreak:false so the cursor
- * is advanced only by the fixed heading height, never by text reflow.
+ * Renders a section heading with a coloured bar/accent.
+ *
+ * IMPORTANT: every doc.text() call here passes an explicit `height` +
+ * `lineBreak: false`. Without these, PDFKit's own auto-pagination can
+ * silently insert an extra (often blank) page whenever wrapped text would
+ * cross the bottom margin — which conflicts with our manual checkPageBreak
+ * system and is the #1 cause of stray blank pages in the output.
  */
 export function renderSectionHeading(
   doc: any,
@@ -40,26 +44,29 @@ export function renderSectionHeading(
   const W       = T.page.width;
   const usableW = W - M * 2;
 
-  checkPageBreak(doc, 28);
+  checkPageBreak(doc, 30);
 
   if (level === 1) {
     const y = doc.y;
-    drawRect(doc, M, y, usableW, 20, T.colors.primary);
-    applyFont(doc, T.fonts.heading, true, T.colors.white);
-    doc.text(title.toUpperCase(), M + 8, y + 5, {
+    drawRect(doc, M, y, usableW, 22, T.colors.primary);
+    drawRect(doc, M, y + 22, usableW, 2, T.colors.accent); // gold underline — clear separation
+    applyFont(doc, T.fonts.heading + 1, true, T.colors.white);
+    doc.text(title.toUpperCase(), M + 8, y + 6, {
       width:     usableW - 16,
-      lineBreak: false,        // ← prevent text reflow pushing doc.y
+      height:    12,
+      lineBreak: false,
       ellipsis:  true,
     });
-    doc.y = y + 24;            // ← always advance by fixed amount
+    doc.y = y + 28; // always advance by fixed amount
 
   } else if (level === 2) {
     const y = doc.y;
     drawRect(doc, M, y, usableW, 18, T.colors.light);
-    drawRect(doc, M, y, 4, 18, T.colors.secondary);
+    drawRect(doc, M, y, 5, 18, T.colors.secondary); // wider accent bar = more visible
     applyFont(doc, T.fonts.subheading, true, T.colors.primary);
-    doc.text(title, M + 10, y + 4, {
-      width:     usableW - 14,
+    doc.text(title, M + 12, y + 4, {
+      width:     usableW - 16,
+      height:    10,
       lineBreak: false,
       ellipsis:  true,
     });
@@ -67,9 +74,11 @@ export function renderSectionHeading(
 
   } else {
     const y = doc.y;
+    drawRect(doc, M, y, 3, 12, T.colors.secondary); // small tick for visual anchor
     applyFont(doc, T.fonts.body, true, T.colors.secondary);
-    doc.text(title, M, y, {
-      width:     usableW,
+    doc.text(title, M + 8, y, {
+      width:     usableW - 8,
+      height:    10,
       lineBreak: false,
       ellipsis:  true,
     });

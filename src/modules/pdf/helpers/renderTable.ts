@@ -26,8 +26,8 @@ export function renderTable(
   if (title) {
     checkPageBreak(doc, 30);
     applyFont(doc, T.fonts.body, true, T.colors.primary);
-    doc.text(title, M, doc.y);
-    doc.y += 4;
+    doc.text(title, M, doc.y, { height: 10, lineBreak: false });
+    doc.y += 14;
   }
 
   checkPageBreak(doc, 18 + rows.length * 16);
@@ -38,10 +38,16 @@ export function renderTable(
   let x = M;
   columns.forEach((col, i) => {
     applyFont(doc, T.fonts.small, true, T.colors.white);
-    doc.text(col.header, x + 4, y + 5, { width: colWidths[i] - 6, ellipsis: true });
+    doc.text(col.header, x + 4, y + 5, {
+      width:     colWidths[i] - 6,
+      height:    10,
+      ellipsis:  true,
+      lineBreak: false,
+    });
     x += colWidths[i];
   });
   y += 18;
+  doc.y = y;
 
   // Data rows
   rows.forEach((row, ri) => {
@@ -54,7 +60,12 @@ export function renderTable(
     columns.forEach((col, i) => {
       const val = formatCell(row[col.key]);
       applyFont(doc, T.fonts.small, false, T.colors.text);
-      doc.text(val, x + 4, y + 4, { width: colWidths[i] - 6, ellipsis: true });
+      doc.text(val, x + 4, y + 4, {
+        width:     colWidths[i] - 6,
+        height:    9,
+        ellipsis:  true,
+        lineBreak: false,
+      });
       x += colWidths[i];
     });
 

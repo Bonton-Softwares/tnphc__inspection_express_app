@@ -51,12 +51,30 @@ function extractUrls(photos: any): string[] {
 }
 
 /**
+ * Resolve relative/stored paths to a fetchable absolute URL.
+ * DB-stored values are often relative (e.g. "/uploads/xyz.jpg" or
+ * "uploads/xyz.jpg"), which axios cannot fetch directly — they need to be
+ * resolved against the app's public base URL.
+ *
+ * Set APP_BASE_URL (or BASE_URL) in your environment to the host that
+ * actually serves /uploads — e.g. the same value used when building
+ * progressPhoto/answer URLs in Inspection.usecase.ts:
+ *   `${req.protocol}://${req.get("host")}`
+ */
+function resolveImageUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = process.env.APP_BASE_URL || process.env.BASE_URL || "http://localhost:5000";
+  return `${base.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
+}
+
+/**
  * Fetch a remote image and return as base64 data URI.
- * Returns null on any error so the PDF can still render.
+ * Returns null on any error so the PDF can still render (fallback box).
  */
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
   try {
-    const response = await axios.get(url, {
+    const resolved  = resolveImageUrl(url);
+    const response   = await axios.get(resolved, {
       responseType: "arraybuffer",
       timeout:      8000,
       headers:      { Accept: "image/*" },
@@ -70,11 +88,10 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
 }
 
 /**
- * Renders actual images (fetched from URL) into the PDF.
- * Falls back to a URL label box if fetch fails.
+ * Renders actual images (fetched from URL) into the PDF, laid out in a
+ * clean, evenly-spaced grid. Falls back to a labelled box if a fetch fails.
  *
  * NOTE: This is async — callers must await it.
- * For sync renderers, use renderPhotoReferencesSync instead.
  */
 export async function renderPhotoImages(
   doc: any,
@@ -91,33 +108,37 @@ export async function renderPhotoImages(
   const usableW = W - M * 2;
 
   applyFont(doc, T.fonts.small, true, T.colors.subtext);
-  doc.text(label, M, doc.y);
-  doc.y += 4;
+  doc.text(label, M, doc.y, { height: 10, lineBreak: false });
+  doc.y += 14;
 
-  const imgW    = (usableW - (maxPhotos - 1) * 6) / maxPhotos;  // max 4 across
-  const imgH    = imgW * 0.65;                                   // ~3:2 ratio
-  const perRow  = Math.floor(usableW / (imgW + 6));
+  // Fixed 4-column grid regardless of how many photos are present, so
+  // alignment stays consistent across every photo block in the document.
+  const gap     = 6;
+  const cols    = maxPhotos;
+  const imgW    = (usableW - (cols - 1) * gap) / cols;
+  const imgH    = imgW * 0.65; // ~3:2 ratio
+  const captionH = 10;
+  const rowAdvance = imgH + captionH + 8;
 
   let x   = M;
   let col = 0;
 
   for (let i = 0; i < urls.length; i++) {
-    if (col > 0 && col % perRow === 0) {
+    if (col > 0 && col % cols === 0) {
       x = M;
-      doc.y += imgH + 6;
-      checkPageBreak(doc, imgH + 20);
+      doc.y += rowAdvance;
+      checkPageBreak(doc, rowAdvance + 20);
+    } else {
+      checkPageBreak(doc, rowAdvance + 20);
     }
 
-    checkPageBreak(doc, imgH + 20);
     const currentY = doc.y;
-
-    const dataUri = await fetchImageAsDataUri(urls[i]);
+    const dataUri  = await fetchImageAsDataUri(urls[i]);
 
     if (dataUri) {
       try {
-        doc.image(dataUri, x, currentY, { width: imgW, height: imgH });
+        doc.image(dataUri, x, currentY, { width: imgW, height: imgH, fit: [imgW, imgH] });
       } catch {
-        // Image decode failed — draw fallback box
         drawFallbackBox(doc, x, currentY, imgW, imgH, urls[i], i + 1);
       }
     } else {
@@ -126,13 +147,18 @@ export async function renderPhotoImages(
 
     // Photo number caption
     applyFont(doc, 6.5, false, T.colors.subtext);
-    doc.text(`Photo ${i + 1}`, x, currentY + imgH + 1, { width: imgW, align: "center" });
+    doc.text(`Photo ${i + 1}`, x, currentY + imgH + 2, {
+      width:     imgW,
+      height:    captionH,
+      align:     "center",
+      lineBreak: false,
+    });
 
-    x   += imgW + 6;
+    x   += imgW + gap;
     col += 1;
   }
 
-  doc.y += imgH + 18;
+  doc.y += rowAdvance + 4;
 }
 
 function drawFallbackBox(
@@ -143,7 +169,12 @@ function drawFallbackBox(
   drawRect(doc, x, y, w, h, T.colors.light, T.colors.border);
   applyFont(doc, 6, false, T.colors.muted);
   const filename = url.split("/").pop()?.split("?")[0] ?? url;
-  doc.text(`[${idx}] ${filename}`, x + 4, y + h / 2 - 4, { width: w - 8, ellipsis: true });
+  doc.text(`[${idx}] ${filename}`, x + 4, y + h / 2 - 4, {
+    width:     w - 8,
+    height:    9,
+    ellipsis:  true,
+    lineBreak: false,
+  });
 }
 
 /**
@@ -164,8 +195,10 @@ export function renderPhotoReferences(
   const usableW = W - M * 2;
 
   applyFont(doc, T.fonts.small, true, T.colors.subtext);
-  doc.text(`${label} (${urls.length} photo${urls.length > 1 ? "s" : ""})`, M, doc.y);
-  doc.y += 3;
+  doc.text(`${label} (${urls.length} photo${urls.length > 1 ? "s" : ""})`, M, doc.y, {
+    height: 10, lineBreak: false,
+  });
+  doc.y += 13;
 
   const boxW = Math.min(130, (usableW - 12) / 4);
   const boxH = 14;
@@ -181,7 +214,12 @@ export function renderPhotoReferences(
     drawRect(doc, x, doc.y, boxW, boxH, T.colors.light, T.colors.border);
     applyFont(doc, 6, false, T.colors.muted);
     const short = url.split("/").pop()?.split("?")[0] ?? url;
-    doc.text(`[${i + 1}] ${short}`, x + 3, doc.y + 3, { width: boxW - 6, ellipsis: true });
+    doc.text(`[${i + 1}] ${short}`, x + 3, doc.y + 3, {
+      width:     boxW - 6,
+      height:    9,
+      ellipsis:  true,
+      lineBreak: false,
+    });
 
     x += boxW + 4;
   });
