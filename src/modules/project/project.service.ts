@@ -968,7 +968,6 @@ export const getProjectDashboardService = async (userId?: string) => {
   where: { isActive: true },
   include: { developmentWork: true }  // relation field name on TakeoverBuildingInspection model
 },
-      TakeoverDevelopmentWork:    { where: { isActive: true } },
       inspectionProgresses: {
         where: { isActive: true },
         include: {
