@@ -1,6 +1,11 @@
 import express from "express";
 import { upload } from "../../utils/multer";
+import { validateRequest } from "../../middleware/validateRequest";
 import * as ctrl from "./takeoverDevelopmentWork.controller";
+import {
+  createTakeoverDevelopmentWorkSchema,
+  updateTakeoverDevelopmentWorkSchema
+} from "./takeoverDevelopmentWork.schema";
 
 const router = express.Router();
 
@@ -19,15 +24,32 @@ const uploadFields = upload.fields([
   { name: "otherDefectsPhotos", maxCount: 5 }
 ]);
 
-router.post("/createTakeoverDevelopmentWork", uploadFields, ctrl.createTakeoverDevelopmentWork);
-router.get("/getAllTakeoverDevelopmentWork/:projectId", ctrl.getAllTakeoverDevelopmentWork);
-router.get("/getTakeoverDevelopmentWorkByid/:id", ctrl.getTakeoverDevelopmentWorkById);
-
-router.get(
-  "/getTakeoverDevelopmentWork/:projectId",
-  ctrl.getTakeoverDevelopmentWorkByProjectId
+// ─── CREATE (upsert by buildingInspectionId) ───────────────────────
+router.post(
+  "/",
+  uploadFields,
+  validateRequest(createTakeoverDevelopmentWorkSchema),
+  ctrl.createTakeoverDevelopmentWork
 );
-router.put("/updateTakeoverDevelopmentWork/:id", uploadFields, ctrl.updateTakeoverDevelopmentWork);
-router.delete("/deleteTakeoverDevelopmentWork/:id", ctrl.deleteTakeoverDevelopmentWork);
+
+// ─── GET by buildingInspectionId ───────────────────────────────────
+router.get(
+  "/getTakeoverDevelopmentWork/:buildingInspectionId",
+  ctrl.getTakeoverDevelopmentWorkByBuildingInspectionId
+);
+
+// ─── GET by id ──────────────────────────────────────────────────────
+router.get("/getTakeoverDevelopmentWorkById/:id", ctrl.getTakeoverDevelopmentWorkById);
+
+// ─── UPDATE ────────────────────────────────────────────────────────
+router.put(
+  "/:id",
+  uploadFields,
+  validateRequest(updateTakeoverDevelopmentWorkSchema),
+  ctrl.updateTakeoverDevelopmentWork
+);
+
+// ─── DELETE ────────────────────────────────────────────────────────
+router.delete("/:id", ctrl.deleteTakeoverDevelopmentWork);
 
 export default router;
