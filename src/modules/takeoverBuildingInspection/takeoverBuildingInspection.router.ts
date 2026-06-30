@@ -7,7 +7,8 @@ import {
   getTakeoverBuildingInspectionById,
   getTakeoverBuildingInspectionByProjectId,
   updateTakeoverBuildingInspection,
-  deleteTakeoverBuildingInspection
+  deleteTakeoverBuildingInspection,
+  getTakeoverBuildingInspectionSetup
 } from "./takeoverBuildingInspection.controller";
 import {
   createTakeoverBuildingInspectionSchema,
@@ -62,23 +63,24 @@ const uploadFields = upload.fields([
   { name: "terraceLeakagePhoto",         maxCount: 5 },
   { name: "terraceLeakageResultPhoto",   maxCount: 5 }
 ]);
+router.get("/setup/:projectId", getTakeoverBuildingInspectionSetup)
 
 router.post(
-  "/createTakeoverBuildingInspection",
+  "/",
   uploadFields,
   validateRequest(createTakeoverBuildingInspectionSchema),
   createTakeoverBuildingInspection
 );
 
-router.get("/getAllTakeoverBuildingInspection/:projectId", getAllTakeoverBuildingInspection);
-router.get("/getTakeoverBuildingInspectionByid/:id",      getTakeoverBuildingInspectionById);
+router.get("/:projectId", getAllTakeoverBuildingInspection);
+router.get("/:id",      getTakeoverBuildingInspectionById);
 router.get(
   "/getTakeoverBuildingInspection/:projectId",
   getTakeoverBuildingInspectionByProjectId
 );
 
 router.put(
-  "/updateTakeoverBuildingInspection/:id",
+  "/:id",
   uploadFields,
   validateRequest(updateTakeoverBuildingInspectionSchema),
   updateTakeoverBuildingInspection
