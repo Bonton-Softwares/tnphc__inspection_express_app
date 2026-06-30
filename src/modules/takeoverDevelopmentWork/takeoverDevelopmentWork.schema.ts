@@ -67,7 +67,8 @@ const commonFields = {
 };
 
 export const createTakeoverDevelopmentWorkSchema = Joi.object({
-  projectId: Joi.string().required(),
+  
+  buildingInspectionId: Joi.string().uuid().required(),
   ...commonFields
 });
 
