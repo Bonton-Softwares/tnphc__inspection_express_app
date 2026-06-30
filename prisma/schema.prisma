@@ -304,7 +304,7 @@ selectedDistrict      masterDistrict? @relation("ProjectSelectedDistrict", field
   BuildingInspection         BuildingInspection[]
   
   TakeoverBuildingInsepction TakeoverBuildingInspection[]
-  TakeoverDevelopmentWork    TakeoverDevelopmentWork[]
+  
 
   
     
@@ -924,6 +924,9 @@ model DevelopmentWork {
 model TakeoverBuildingInspection {
   id                 String @id @default(uuid())
   projectId          String
+    blockId            String?
+  floorId            String?
+  roomNo             String?
   structure          Json?
   painting           Json?
   tilingFlooring     Json?
@@ -941,12 +944,24 @@ model TakeoverBuildingInspection {
   updatedById String?  @map("updated_by")
   isActive    Boolean  @default(true) @map("is_active")
 
-  project project @relation(fields: [projectId], references: [id])
+   project project @relation(fields: [projectId], references: [id])
+  block   project_block? @relation(fields: [blockId], references: [id])
+  floor   project_floor? @relation(fields: [floorId], references: [id])
+
+  developmentWork TakeoverDevelopmentWork?
+
+  @@index([projectId])
+  @@index([blockId])
+  @@index([floorId])
+
+  @@unique([projectId, blockId, floorId, roomNo])
 }
 
 model TakeoverDevelopmentWork {
   id                  String @id @default(uuid())
-  projectId           String
+
+   takeoverBuildingInspectionId String @unique
+  
   sumpPump            Json?
   borewell            Json?
   inspectionChamber   Json?
@@ -966,7 +981,9 @@ model TakeoverDevelopmentWork {
   updatedById String?  @map("updated_by")
   isActive    Boolean  @default(true) @map("is_active")
 
-  project project @relation(fields: [projectId], references: [id])
+    takeoverBuildingInspection TakeoverBuildingInspection@relation(fields: [takeoverBuildingInspectionId], references: [id])
+
+  @@index([takeoverBuildingInspectionId])
 }
 model project_history {
   id              String   @id @default(uuid()) @db.VarChar(36)
@@ -1020,6 +1037,7 @@ model project_block {
 
 inspectionProgresses inspection_progress[]
 buildingInspections BuildingInspection[]
+takeoverBuildingInspections TakeoverBuildingInspection[]
 
   @@unique([projectId, blockName])
 }
@@ -1042,6 +1060,7 @@ model project_floor {
 
  inspectionProgresses inspection_progress[]
  buildingInspections BuildingInspection[]
+ takeoverBuildingInspections TakeoverBuildingInspection[]
 
   @@unique([blockId, floorName])
 }

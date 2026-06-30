@@ -4,7 +4,8 @@ import {
   getTakeoverBuildingInspectionByIdDB,
   getTakeoverBuildingInspectionByProjectIdDB,
   updateTakeoverBuildingInspectionDB,
-  deleteTakeoverBuildingInspectionDB
+  deleteTakeoverBuildingInspectionDB,
+  getTakeoverBuildingInspectionSetupService
 } from "./takeoverBuildingInspection.service";
 
 const toBool = (val: any): boolean | null => {
@@ -47,7 +48,9 @@ export const createTakeoverBuildingInspectionUsecase = async (
 
   const data = {
     projectId: body.projectId,
-
+  blockId:   body.blockId ?? null,   // ← add
+  floorId:   body.floorId ?? null,   // ← add
+  roomNo:    body.roomNo  ?? null,   // ← add
     // ── STRUCTURE ──────────────────────────────────────────────────────────
     structure: buildSection(
       body.structureStatus,
@@ -243,10 +246,19 @@ export const createTakeoverBuildingInspectionUsecase = async (
 
     createdById: userId
   };
+  const roleId = req.user?.roleId;                                              // ← add
+const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();       // ← add
+
+return createTakeoverBuildingInspectionDB(data, userId, roleId, ipAddress);   // ← pass extra args
+
 
   return createTakeoverBuildingInspectionDB(data);
 };
 
+
+export const getTakeoverBuildingInspectionSetupUsecase = async (projectId: string) => {
+  return getTakeoverBuildingInspectionSetupService(projectId);
+};
 // ─── GET ALL ──────────────────────────────────────────────────────────────
 export const getAllTakeoverBuildingInspectionUsecase = async (projectId: string) => {
   return getAllTakeoverBuildingInspectionDB(projectId);
@@ -281,6 +293,8 @@ export const updateTakeoverBuildingInspectionUsecase = async (
   userId?: string
 ) => {
   const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const roleId = req.user?.roleId;                                            // ← add
+  const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();
 
   const getFiles = (field: string) =>
     (files?.[field] || []).map((file: any) => ({
@@ -715,10 +729,16 @@ export const updateTakeoverBuildingInspectionUsecase = async (
     };
   }
 
-  return updateTakeoverBuildingInspectionDB(id, data);
+   return updateTakeoverBuildingInspectionDB(id, data, userId, roleId, ipAddress); 
 };
 
 // ─── DELETE ───────────────────────────────────────────────────────────────
-export const deleteTakeoverBuildingInspectionUsecase = async (id: string) => {
-  return deleteTakeoverBuildingInspectionDB(id);
-};
+export const deleteTakeoverBuildingInspectionUsecase = async (
+  id: string,
+  req: any,        // ← add
+  userId?: string  // ← add
+) => {
+  const roleId = req.user?.roleId;                                            // ← add
+  const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();     // ← add
+  return deleteTakeoverBuildingInspectionDB(id, userId, roleId, ipAddress);   // ← pass audit args
+}

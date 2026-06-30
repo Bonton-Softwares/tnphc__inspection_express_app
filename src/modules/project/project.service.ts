@@ -964,7 +964,10 @@ export const getProjectDashboardService = async (userId?: string) => {
         where: { isActive: true },
         include: { developmentWork: true }  // ← nested, no direct project relation
       },
-      TakeoverBuildingInsepction: { where: { isActive: true } },
+      TakeoverBuildingInsepction: {
+  where: { isActive: true },
+  include: { developmentWork: true }  // relation field name on TakeoverBuildingInspection model
+},
       TakeoverDevelopmentWork:    { where: { isActive: true } },
       inspectionProgresses: {
         where: { isActive: true },
@@ -1033,8 +1036,11 @@ export const getProjectDashboardService = async (userId?: string) => {
     if (hasDevelopmentWork) done.push("Development Work");
 
     if ((p.TakeoverBuildingInsepction as any[]).length > 0) done.push("Takeover Building Inspection");
-    if ((p.TakeoverDevelopmentWork    as any[]).length > 0) done.push("Takeover Development Work");
 
+const hasTakeoverDevelopmentWork = (p.TakeoverBuildingInsepction as any[]).some(
+  (tbi: any) => tbi.developmentWork !== null
+);
+if (hasTakeoverDevelopmentWork) done.push("Takeover Development Work");
     const doneCount    = done.length;
     const pendingCount = Math.max(0, selectedStageCount - doneCount);
 

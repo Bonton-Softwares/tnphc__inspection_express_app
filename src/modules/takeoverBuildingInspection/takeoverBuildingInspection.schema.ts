@@ -11,6 +11,9 @@ const fireSystemsField = Joi.alternatives()
 
 export const createTakeoverBuildingInspectionSchema = Joi.object({
   projectId: Joi.string().required(),
+  blockId:   Joi.string().uuid().optional().allow(null, ""),  // ← add
+  floorId:   Joi.string().uuid().optional().allow(null, ""),  // ← add
+  roomNo:    Joi.string().optional().allow(null, ""),  
 
   // STRUCTURE
   structureStatus:       statusField,
