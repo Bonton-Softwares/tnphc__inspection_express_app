@@ -32,7 +32,7 @@ export const createTakeoverDevelopmentWorkUsecase = async (
     }));
 
   const data = {
-    buildingInspectionId: body.buildingInspectionId,
+    takeoverBuildingInspectionId: body.takeoverBuildingInspectionId,
 
     sumpPump: {
       completionPercentage: body.completionPercentage || null,

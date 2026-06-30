@@ -5,7 +5,8 @@ import {
   getTakeoverBuildingInspectionByProjectIdDB,
   updateTakeoverBuildingInspectionDB,
   deleteTakeoverBuildingInspectionDB,
-  getTakeoverBuildingInspectionSetupService
+  getTakeoverBuildingInspectionSetupService,
+  getTakeoverBuildingInspectionByFloorService
 } from "./takeoverBuildingInspection.service";
 
 const toBool = (val: any): boolean | null => {
@@ -742,3 +743,9 @@ export const deleteTakeoverBuildingInspectionUsecase = async (
   const ipAddress = req.ip ?? req.headers["x-forwarded-for"]?.toString();     // ← add
   return deleteTakeoverBuildingInspectionDB(id, userId, roleId, ipAddress);   // ← pass audit args
 }
+
+export const getTakeoverBuildingInspectionByFloorUsecase = async (
+  floorId: string
+) => {
+  return getTakeoverBuildingInspectionByFloorService(floorId);
+};

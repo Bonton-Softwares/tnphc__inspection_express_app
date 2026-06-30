@@ -14,12 +14,12 @@ export const createTakeoverDevelopmentWorkDB = async (
   roleId?: string,
   ipAddress?: string
 ) => {
-  const existing = await prisma.takeoverDevelopmentWork.findFirst({
-    where: {
-      buildingInspectionId: data.buildingInspectionId,
-      isActive: true
-    }
-  });
+ const existing = await prisma.takeoverDevelopmentWork.findFirst({
+  where: {
+    takeoverBuildingInspectionId: data.takeoverBuildingInspectionId,
+    isActive: true
+  }
+});
 
   if (existing) {
     const oldValue = { ...existing };
@@ -74,15 +74,14 @@ export const createTakeoverDevelopmentWorkDB = async (
 
 // ─── GET BY BUILDING INSPECTION ID ────────────────────────────────
 export const getTakeoverDevelopmentWorkByBuildingInspectionIdDB = async (
-  buildingInspectionId: string
+  takeoverBuildingInspectionId: string
 ) => {
-  const record = await prisma.takeoverDevelopmentWork.findFirst({
-    where: { buildingInspectionId, isActive: true }
+  return prisma.takeoverDevelopmentWork.findFirst({
+    where: {
+      takeoverBuildingInspectionId,
+      isActive: true
+    }
   });
-
-  if (!record) throw new Error("Takeover development work record not found");
-
-  return record;
 };
 
 // ─── GET BY ID ────────────────────────────────────────────────────

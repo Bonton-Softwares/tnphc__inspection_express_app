@@ -6,7 +6,8 @@ import {
   getTakeoverBuildingInspectionByProjectIdUsecase,
   updateTakeoverBuildingInspectionUsecase,
   deleteTakeoverBuildingInspectionUsecase,
-  getTakeoverBuildingInspectionSetupUsecase
+  getTakeoverBuildingInspectionSetupUsecase,
+  getTakeoverBuildingInspectionByFloorUsecase
 } from "./takeoverBuildingInspection.usecase";
 
 export const createTakeoverBuildingInspection = async (req: Request, res: Response) => {
@@ -80,6 +81,16 @@ export const deleteTakeoverBuildingInspection = async (req: Request, res: Respon
     const userId = (req as any).user?.id;             // ← add
     await deleteTakeoverBuildingInspectionUsecase(id, req, userId); // ← pass req, userId
     res.status(200).json({ success: true, message: "Deleted" });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const getTakeoverBuildingInspectionByFloor = async (req: Request, res: Response) => {
+  try {
+    const floorId = req.params.floorId as string;
+    const result = await getTakeoverBuildingInspectionByFloorUsecase(floorId);
+    res.status(200).json({ success: true, data: result });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
   }

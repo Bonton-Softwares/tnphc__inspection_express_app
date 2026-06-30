@@ -8,7 +8,8 @@ import {
   getTakeoverBuildingInspectionByProjectId,
   updateTakeoverBuildingInspection,
   deleteTakeoverBuildingInspection,
-  getTakeoverBuildingInspectionSetup
+  getTakeoverBuildingInspectionSetup,
+  getTakeoverBuildingInspectionByFloor
 } from "./takeoverBuildingInspection.controller";
 import {
   createTakeoverBuildingInspectionSchema,
@@ -63,7 +64,7 @@ const uploadFields = upload.fields([
   { name: "terraceLeakagePhoto",         maxCount: 5 },
   { name: "terraceLeakageResultPhoto",   maxCount: 5 }
 ]);
-router.get("/setup/:projectId", getTakeoverBuildingInspectionSetup)
+router.get("/setup/:projectId", getTakeoverBuildingInspectionSetup);
 
 router.post(
   "/",
@@ -72,12 +73,17 @@ router.post(
   createTakeoverBuildingInspection
 );
 
-router.get("/:projectId", getAllTakeoverBuildingInspection);
-router.get("/:id",      getTakeoverBuildingInspectionById);
+// renamed from "/:projectId" to avoid clashing with "/:id"
+router.get("/project/:projectId", getAllTakeoverBuildingInspection);
+
 router.get(
   "/getTakeoverBuildingInspection/:projectId",
   getTakeoverBuildingInspectionByProjectId
 );
+
+router.get("/floor/:floorId", getTakeoverBuildingInspectionByFloor);
+// now safely reachable
+router.get("/:id", getTakeoverBuildingInspectionById);
 
 router.put(
   "/:id",
@@ -87,5 +93,7 @@ router.put(
 );
 
 router.delete("/deleteTakeoverBuildingInspection/:id", deleteTakeoverBuildingInspection);
+
+
 
 export default router;
