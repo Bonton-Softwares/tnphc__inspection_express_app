@@ -6,29 +6,31 @@ import { renderFooter }                                     from "../helpers/ren
 import { renderSectionHeading, spacer, setPatchingFooters } from "../helpers/renderSection";
 import { renderFields }                                     from "../helpers/renderFields";
 
-import { renderLandSiteData }        from "../stage-data/landSite.data";
-import { renderPreConstructionData } from "../stage-data/preConstruction.data";
-import { renderFoundationData }      from "../stage-data/foundation.data";
-import { renderPlinthData }          from "../stage-data/plinth.data";
-import { renderSuperStructureData }  from "../stage-data/superStructure.data";
-import { renderInteriorsData }       from "../stage-data/interiors.data";
-import { renderExteriorsData }       from "../stage-data/exteriors.data";
-import { renderDevelopmentData }     from "../stage-data/development.data";
-import { renderTakeoverData }        from "../stage-data/takeover.data";
+import { renderLandSiteData }         from "../stage-data/landSite.data";
+import { renderPreConstructionData }  from "../stage-data/preConstruction.data";
+import { renderFoundationData }       from "../stage-data/foundation.data";
+import { renderPlinthData }           from "../stage-data/plinth.data";
+import { renderModuleInspectionData } from "../stage-data/moduleInspection.data";
+import { renderDevelopmentData }      from "../stage-data/development.data";
+import { renderTakeoverData }         from "../stage-data/takeover.data";
 
 const STAGE_RENDERERS: Record<string, (doc: any, data: any) => Promise<void> | void> = {
   "Land Site Inspection":     renderLandSiteData,
   "Pre-Construction":         renderPreConstructionData,
   "Foundation Stage":         renderFoundationData,
   "Plinth Stage":             renderPlinthData,
-  "Superstructure Stage":     renderSuperStructureData,
-  "Non Superstructure Stage": renderSuperStructureData,
-  "Interiors":                renderInteriorsData,
-  "Exteriors":                renderExteriorsData,
+  "Framed Structure":         renderModuleInspectionData,
+  "Load Bearing Structure":   renderModuleInspectionData,
+  "Interiors":                renderModuleInspectionData,
+  "Exteriors":                renderModuleInspectionData,
   "Development Work":         renderDevelopmentData,
   "Take Over":                renderTakeoverData,
 };
 
+// ─── Does this stage have anything worth printing? ───────────────────────────
+// Module-driven stages (Framed/Load Bearing Structure, Interiors, Exteriors)
+// are checked via totalRecords, since they no longer carry the old
+// blocks[].qualityRecord / startedFloors shape.
 function stageHasData(s: any): boolean {
   if (!s) return false;
   if (s.records?.length)             return true;
@@ -36,13 +38,7 @@ function stageHasData(s: any): boolean {
   if (s.qualityChecks?.length)       return true;
   if (s.buildingInspections?.length) return true;
   if (s.developmentWorks?.length)    return true;
-  if (Array.isArray(s.blocks) && s.blocks.length > 0) {
-    return s.blocks.some(
-      (b: any) =>
-        (typeof b.startedFloors === "number" && b.startedFloors > 0) ||
-        b.qualityRecord != null
-    );
-  }
+  if (typeof s.totalRecords === "number" && s.totalRecords > 0) return true;
   return false;
 }
 

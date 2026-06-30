@@ -3,8 +3,9 @@ import prisma from "../../shared/prisma";
 import { generateAdminDashboardPdf } from "./generators/adminDashboardPdf";
 import { generateUserDetailPdf }     from "./generators/userDetailPdf";
 import { generateSingleProjectPdf }  from "./generators/singleProjectPdf";
+import { STAGE_LABELS, MODULE_STAGE_MAP, isModuleDrivenStage } from "./configs/stageConfig";
 
-// ─── Prisma include — fixed: no isActive on blocks, no standalone floors ─────
+// ─── Prisma include — module-driven stages now read from inspection_progress ─
 const PROJECT_INCLUDE = {
   department:    true,
   createdByUser: {
@@ -24,35 +25,35 @@ const PROJECT_INCLUDE = {
   foundationQualityChecks:    { where: { isActive: true } },
   plinthStages:               { where: { isActive: true } },
 
-  // ✅ project_block has NO isActive field — no where clause here
+  // project_block has NO isActive field — no where clause here
   blocks: {
     include: { floors: true },
   },
 
-  // ✅ SuperStructureProgress is the actual relation name on project model (capital S)
-  SuperStructureProgress: {
-    where:   { isActive: true },
+  // ✅ replaces SuperStructureProgress / interiorsProgress / exteriorsProgress
+  // Drives: Framed Structure, Load Bearing Structure, Interiors, Exteriors
+  inspectionProgresses: {
+    where: { isActive: true },
     include: {
-      quality: true,
+      module:  true,
+      stage:   true,
       block:   true,
       floor:   true,
+      answers: { include: { question: true, option: true, images: true } },
     },
   },
 
-  interiorsProgress: {
+  // ✅ DevelopmentWork has no direct relation to `project` — it hangs off
+  // BuildingInspection (1:1 via buildingInspectionId). Same for
+  // TakeoverDevelopmentWork off TakeoverBuildingInspection. Nest them.
+  BuildingInspection: {
     where:   { isActive: true },
-    include: { quality: true, block: true, floor: true },
+    include: { developmentWork: true, block: true, floor: true },
   },
-
-  exteriorsProgress: {
+  TakeoverBuildingInsepction: {
     where:   { isActive: true },
-    include: { quality: true, block: true, floor: true },
+    include: { developmentWork: true, block: true, floor: true },
   },
-
-  BuildingInspection:         { where: { isActive: true } },
-  DevelopmentWork:            { where: { isActive: true } },
-  TakeoverBuildingInsepction: { where: { isActive: true } },
-  TakeoverDevelopmentWork:    { where: { isActive: true } },
 
   projectHistories: {
     where:   { isActive: true },
@@ -67,8 +68,8 @@ const ALL_STAGES = [
   { key: "Pre-Construction"         },
   { key: "Foundation Stage"         },
   { key: "Plinth Stage"             },
-  { key: "Superstructure Stage"     },
-  { key: "Non Superstructure Stage" },
+  { key: "Framed Structure"         },
+  { key: "Load Bearing Structure"   },
   { key: "Interiors"                },
   { key: "Exteriors"                },
   { key: "Development Work"         },
@@ -77,10 +78,21 @@ const ALL_STAGES = [
 
 type StageKey = (typeof ALL_STAGES)[number]["key"];
 
+// Legacy aliases so old `selectedStages` values stored in existing project
+// rows (e.g. "Superstructure Stage", "Non Superstructure Stage") still
+// resolve to the renamed keys without a data migration.
+const LEGACY_ALIASES: Record<string, StageKey> = {
+  "superstructure stage":     "Framed Structure",
+  "non superstructure stage": "Load Bearing Structure",
+};
+
 function normalizeKey(raw: string): StageKey | null {
   const cleaned = raw.replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ").toLowerCase().trim();
+
+  if (LEGACY_ALIASES[cleaned]) return LEGACY_ALIASES[cleaned];
+
   const found = ALL_STAGES.find((s) => s.key.toLowerCase() === cleaned);
   return found ? found.key : null;
 }
@@ -124,8 +136,35 @@ function resolveQualityNames(q: any, maps: LookupMaps): any {
   };
 }
 
+// ─── Development work helpers ──────────────────────────────────────────────
+// DevelopmentWork/TakeoverDevelopmentWork aren't directly on `project` —
+// each BuildingInspection / TakeoverBuildingInspection row optionally has
+// one attached. Flatten them out here.
+function getDevelopmentWorks(p: any): any[] {
+  return (p.BuildingInspection ?? [])
+    .map((bi: any) => bi.developmentWork)
+    .filter((dw: any) => dw != null);
+}
+
+function getTakeoverDevelopmentWorks(p: any): any[] {
+  return (p.TakeoverBuildingInsepction ?? [])
+    .map((bi: any) => bi.developmentWork)
+    .filter((dw: any) => dw != null);
+}
+
 // ─── Stage status ─────────────────────────────────────────────────────────────
 function resolveStageStatus(key: StageKey, p: any) {
+  if (isModuleDrivenStage(key)) {
+    const moduleName = MODULE_STAGE_MAP[key];
+    const records = (p.inspectionProgresses ?? []).filter(
+      (r: any) => r.module?.name === moduleName
+    );
+    return {
+      started:   records.length > 0,
+      completed: records.length > 0 && records.every((r: any) => r.status === "COMPLETED"),
+    };
+  }
+
   switch (key) {
     case "Land Site Inspection":
       return { started: p.landSiteInspection.length > 0,        completed: p.landSiteInspection.length > 0 };
@@ -138,77 +177,131 @@ function resolveStageStatus(key: StageKey, p: any) {
       };
     case "Plinth Stage":
       return { started: p.plinthStages.length > 0, completed: p.plinthStages.length > 0 };
-    case "Superstructure Stage":
-    case "Non Superstructure Stage":
+    case "Development Work": {
+      const dw = getDevelopmentWorks(p);
+      return { started: dw.length > 0, completed: dw.length > 0 };
+    }
+    case "Take Over": {
+      const takeoverDw = getTakeoverDevelopmentWorks(p);
       return {
-        started:   p.SuperStructureProgress.length > 0,
-        completed: p.SuperStructureProgress.some((s: any) => s.quality),
+        started:   p.TakeoverBuildingInsepction.length > 0 || takeoverDw.length > 0,
+        completed: p.TakeoverBuildingInsepction.length > 0 && takeoverDw.length > 0,
       };
-    case "Interiors":
-      return { started: p.interiorsProgress.length > 0,  completed: p.interiorsProgress.some((s: any)  => s.quality) };
-    case "Exteriors":
-      return { started: p.exteriorsProgress.length > 0,  completed: p.exteriorsProgress.some((s: any)  => s.quality) };
-    case "Development Work":
-      return { started: p.DevelopmentWork.length > 0,    completed: p.DevelopmentWork.length > 0 };
-    case "Take Over":
-      return {
-        started:   p.TakeoverBuildingInsepction.length > 0 || p.TakeoverDevelopmentWork.length > 0,
-        completed: p.TakeoverBuildingInsepction.length > 0 && p.TakeoverDevelopmentWork.length > 0,
-      };
+    }
     default:
       return { started: false, completed: false };
   }
 }
 
-// ─── Block summary — per block: progress entries + per-block quality ──────────
-function buildBlockSummary(blocks: any[], progressList: any[], maps: LookupMaps) {
-  return blocks.map((block: any) => {
-    const bp = progressList.filter((p: any) => p.blockId === block.id);
-    const totalFloors     = block.totalFloors ?? 0;
-    const completedFloors = bp.filter((p: any) => p.status === "COMPLETED").length;
-    const startedFloors   = bp.length;
+// ─── Module-driven stage detail — group by block → floor → room → stage ──────
+// Used for: Framed Structure, Load Bearing Structure, Interiors, Exteriors.
+// All four now pull from the SAME inspection_progress + inspection_answer
+// tables, filtered by module name, instead of bespoke quality tables.
+function resolveModuleStageDetail(key: StageKey, p: any) {
+  const moduleName = MODULE_STAGE_MAP[key];
+  const records = (p.inspectionProgresses ?? []).filter(
+    (r: any) => r.module?.name === moduleName
+  );
 
-    // Floor-level detail
-    const floorMap: Record<string, any[]> = {};
-    for (const p of bp) {
-      const fk = p.floor?.floorName ?? "General";
-      if (!floorMap[fk]) floorMap[fk] = [];
-      floorMap[fk].push(p);
+  type RoomEntry = { roomNo: string | null; overallStatus: string; stages: any[] };
+  type FloorEntry = { floorName: string; rooms: Map<string, RoomEntry> };
+  type BlockEntry = { blockName: string; floors: Map<string, FloorEntry> };
+
+  const blockMap = new Map<string, BlockEntry>();
+
+  for (const r of records) {
+    const blockName = r.block?.blockName ?? "General";
+    if (!blockMap.has(blockName)) {
+      blockMap.set(blockName, { blockName, floors: new Map() });
     }
-    const floorDetails = Object.entries(floorMap).map(([floorName, entries]) => ({
-      floorName,
-      status: entries.every((e: any) => e.status === "COMPLETED") ? "COMPLETED"
-            : entries.length > 0 ? "IN_PROGRESS" : "NOT_STARTED",
-      stage:   entries[0]?.stage ?? null,
-      remarks: entries[0]?.remarks ?? null,
-      photo:   entries[0]?.photo ?? null,
-    }));
+    const block = blockMap.get(blockName)!;
 
-    // This block's quality record (if any progress entry has quality)
-    const withQuality = bp.find((p: any) => p.quality);
-    const qualityRecord = withQuality
-      ? resolveQualityNames(withQuality.quality, maps)
-      : null;
+    const floorName = r.floor?.floorName ?? "General";
+    if (!block.floors.has(floorName)) {
+      block.floors.set(floorName, { floorName, rooms: new Map() });
+    }
+    const floor = block.floors.get(floorName)!;
 
-    return {
-      blockName: block.blockName,
-      totalFloors,
-      completedFloors,
-      startedFloors,
-      floorDetails,
-      qualityRecord,   // ← per-block quality
-      status: completedFloors === totalFloors && totalFloors > 0 ? "COMPLETED"
-            : startedFloors > 0 ? "IN_PROGRESS" : "NOT_STARTED",
-    };
-  });
+    const roomKey = r.roomNo ?? "__none__";
+    if (!floor.rooms.has(roomKey)) {
+      floor.rooms.set(roomKey, { roomNo: r.roomNo ?? null, overallStatus: "NOT_STARTED", stages: [] });
+    }
+    const room = floor.rooms.get(roomKey)!;
+
+    room.stages.push({
+      stageName:       r.stage?.name ?? "Stage",
+      status:          r.status,
+      workStartedDate: r.workStartedDate,
+      isDelay:         r.isDelay,
+      delayDays:       r.delayDays,
+      delayReason:     r.delayReason,
+      remarks:         r.remarks,
+      progressPhoto:   safeParsePhoto(r.progressPhoto),
+      answers: (r.answers ?? []).map((a: any) => ({
+        question:  a.question?.question ?? "Answer",
+        fieldType: a.question?.fieldType ?? null,
+        value:     resolveAnswerValue(a),
+      })),
+    });
+  }
+
+  const blocks = Array.from(blockMap.values()).map((block) => ({
+    blockName: block.blockName,
+    floors: Array.from(block.floors.values()).map((floor) => ({
+      floorName: floor.floorName,
+      rooms: Array.from(floor.rooms.values()).map((room) => ({
+        roomNo: room.roomNo,
+        stages: room.stages,
+        overallStatus: room.stages.length === 0
+          ? "NOT_STARTED"
+          : room.stages.every((s: any) => s.status === "COMPLETED")
+          ? "COMPLETED"
+          : room.stages.some((s: any) => s.status === "IN_PROGRESS" || s.status === "COMPLETED")
+          ? "IN_PROGRESS"
+          : "NOT_STARTED",
+      })),
+    })),
+  }));
+
+  return {
+    label:            STAGE_LABELS[key] ?? key,
+    totalRecords:     records.length,
+    completedRecords: records.filter((r: any) => r.status === "COMPLETED").length,
+    blocks,
+  };
+}
+
+// IMAGE-type answers are stored as stringified JSON ([{fileName,url}]); other
+// answers may reference a selected option's display value.
+function resolveAnswerValue(a: any): any {
+  if (a.option?.value) return a.option.value;
+  if (typeof a.answer === "string") {
+    try {
+      const parsed = JSON.parse(a.answer);
+      if (Array.isArray(parsed)) return parsed; // image array
+      return a.answer;
+    } catch {
+      return a.answer;
+    }
+  }
+  return a.answer ?? null;
+}
+
+function safeParsePhoto(photo: any): any {
+  if (!photo) return null;
+  if (typeof photo !== "string") return photo;
+  try {
+    return JSON.parse(photo);
+  } catch {
+    return photo;
+  }
 }
 
 // ─── Stage detail ─────────────────────────────────────────────────────────────
 function resolveStageDetail(key: StageKey, p: any, maps: LookupMaps): Record<string, any> {
-  const blocks = p.blocks ?? [];
-  const ssp    = p.SuperStructureProgress ?? [];
-  const ip     = p.interiorsProgress ?? [];
-  const ep     = p.exteriorsProgress ?? [];
+  if (isModuleDrivenStage(key)) {
+    return resolveModuleStageDetail(key, p);
+  }
 
   switch (key) {
     case "Land Site Inspection":
@@ -226,44 +319,13 @@ function resolveStageDetail(key: StageKey, p: any, maps: LookupMaps): Record<str
     case "Plinth Stage":
       return { records: p.plinthStages.map((q: any) => resolveQualityNames(q, maps)) };
 
-    case "Superstructure Stage":
-    case "Non Superstructure Stage": {
-      const blockSummary = buildBlockSummary(blocks, ssp, maps);
-      return {
-        hasSuperStructure: key === "Superstructure Stage",
-        totalBlocks:       blocks.length,
-        totalFloors:       blockSummary.reduce((a: number, b: any) => a + b.totalFloors, 0),
-        completedFloors:   blockSummary.reduce((a: number, b: any) => a + b.completedFloors, 0),
-        qualityChecked:    blockSummary.some((b: any) => b.qualityRecord),
-        blocks:            blockSummary, // each block has its own qualityRecord
-      };
-    }
-
-    case "Interiors": {
-      const blockSummary = buildBlockSummary(blocks, ip, maps);
-      return {
-        totalBlocks:    blocks.length,
-        qualityChecked: blockSummary.some((b: any) => b.qualityRecord),
-        blocks:         blockSummary,
-      };
-    }
-
-    case "Exteriors": {
-      const blockSummary = buildBlockSummary(blocks, ep, maps);
-      return {
-        totalBlocks:    blocks.length,
-        qualityChecked: blockSummary.some((b: any) => b.qualityRecord),
-        blocks:         blockSummary,
-      };
-    }
-
     case "Development Work":
-      return { records: p.DevelopmentWork };
+      return { records: getDevelopmentWorks(p) };
 
     case "Take Over":
       return {
         buildingInspections: p.TakeoverBuildingInsepction,
-        developmentWorks:    p.TakeoverDevelopmentWork,
+        developmentWorks:    getTakeoverDevelopmentWorks(p),
       };
 
     default:
