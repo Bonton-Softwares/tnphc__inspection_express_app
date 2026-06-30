@@ -5,6 +5,7 @@ import { renderHeader }                                     from "../helpers/ren
 import { renderFooter }                                     from "../helpers/renderFooter";
 import { renderSectionHeading, spacer, setPatchingFooters } from "../helpers/renderSection";
 import { renderFields }                                     from "../helpers/renderFields";
+import { disableAutoPagination, trimTrailingBlankPages }    from "../helpers/pdfSafety";
 
 import { renderLandSiteData }         from "../stage-data/landSite.data";
 import { renderPreConstructionData }  from "../stage-data/preConstruction.data";
@@ -57,6 +58,11 @@ export async function generateSingleProjectPdf(params: {
         bufferPages:   true,
       });
 
+      // Forces every doc.text() call across this document — including ones
+      // inside stage-data renderers — to be single-line/bounded, so PDFKit
+      // never silently inserts its own extra page. Fixes the page-doubling.
+      disableAutoPagination(doc);
+
       const chunks: Buffer[] = [];
       doc.on("data",  (c: Buffer) => chunks.push(c));
       doc.on("error", reject);
@@ -102,6 +108,7 @@ export async function generateSingleProjectPdf(params: {
       // ── PATCH FOOTERS ────────────────────────────────────────
       // setPatchingFooters(true) makes checkPageBreak a no-op so that
       // switchToPage() inside this loop can never trigger an extra blank page.
+      trimTrailingBlankPages(doc);
       setPatchingFooters(true);
       try {
         const range      = doc.bufferedPageRange();

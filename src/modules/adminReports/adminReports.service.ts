@@ -16,6 +16,12 @@ const ALL_STAGES = [
 
 type StageKey = (typeof ALL_STAGES)[number]["key"];
 
+// inspection_module.name values — adjust if yours differ
+const FRAMED_MODULE       = "FRAMED_STRUCTURE";
+const LOAD_BEARING_MODULE = "LOAD_BEARING_STRUCTURE";
+const INTERIOR_MODULE     = "INTERIOR";
+const EXTERIOR_MODULE     = "EXTERIOR";
+
 function normalizeKey(raw: string): StageKey | null {
   const cleaned = raw
     .replace(/_/g, " ")
@@ -32,7 +38,12 @@ function normalizeKey(raw: string): StageKey | null {
 
 function resolveStageStatus(
   key: StageKey,
-  project: any
+  project: any,
+  superStructureProgress: any[],
+  interiorsProgress: any[],
+  exteriorsProgress: any[],
+  developmentWorkRecords: any[],
+  takeoverDevelopmentWorkRecords: any[]
 ): { started: boolean; completed: boolean } {
   switch (key) {
     case "Land Site Inspection":
@@ -59,37 +70,45 @@ function resolveStageStatus(
       };
     case "Superstructure Stage":
       return {
-        started:   project.SuperStructureProgress.length > 0,
-        completed: !!project.superStructureQuality,
+        started:   superStructureProgress.length > 0,
+        completed:
+          superStructureProgress.length > 0 &&
+          superStructureProgress.every((p: any) => p.status === "COMPLETED"),
       };
     case "Non Superstructure Stage":
       return {
-        started:   project.SuperStructureProgress.length > 0,
-        completed: !!project.superStructureQuality,
+        started:   superStructureProgress.length > 0,
+        completed:
+          superStructureProgress.length > 0 &&
+          superStructureProgress.every((p: any) => p.status === "COMPLETED"),
       };
     case "Interiors":
       return {
-        started:   project.interiorsProgress.length > 0,
-        completed: !!project.interiorsQuality,
+        started:   interiorsProgress.length > 0,
+        completed:
+          interiorsProgress.length > 0 &&
+          interiorsProgress.every((p: any) => p.status === "COMPLETED"),
       };
     case "Exteriors":
       return {
-        started:   project.exteriorsProgress.length > 0,
-        completed: !!project.exteriorsQuality,
+        started:   exteriorsProgress.length > 0,
+        completed:
+          exteriorsProgress.length > 0 &&
+          exteriorsProgress.every((p: any) => p.status === "COMPLETED"),
       };
     case "Development Work":
       return {
-        started:   project.DevelopmentWork.length > 0,
-        completed: project.DevelopmentWork.length > 0,
+        started:   developmentWorkRecords.length > 0,
+        completed: developmentWorkRecords.length > 0,
       };
     case "Take Over":
       return {
         started:
           project.TakeoverBuildingInsepction.length > 0 ||
-          project.TakeoverDevelopmentWork.length > 0,
+          takeoverDevelopmentWorkRecords.length > 0,
         completed:
           project.TakeoverBuildingInsepction.length > 0 &&
-          project.TakeoverDevelopmentWork.length > 0,
+          takeoverDevelopmentWorkRecords.length > 0,
       };
     default:
       return { started: false, completed: false };
@@ -97,33 +116,22 @@ function resolveStageStatus(
 }
 
 // ─────────────────────────────────────────────
-// FIX 1: blockField can be null in interiors/exteriors
-// Match by blockName OR by floor entry (when block is null, group under "General")
-// FIX 3: completedFloors = floors with status COMPLETED
-//         startedFloors  = floors with ANY progress entry
+// blockField removed — progress rows now carry real blockId/floorId FKs
+// instead of a blockName/block string, so we match by id.
 // ─────────────────────────────────────────────
-function buildBlockSummary(
-  superStructures: any[],
-  progressList: any[],
-  blockField: string   // "blockName" for superStructure, "block" for interiors/exteriors
-) {
-  return superStructures.map((block: any) => {
-    const blockProgress = progressList.filter((p: any) => {
-      const val = p[blockField];
-      // match by blockName; if null in progress, still try to match
-      return val === block.blockName || val === null;
-    });
+function buildBlockSummary(blocks: any[], progressList: any[]) {
+  return blocks.map((block: any) => {
+    const blockProgress = progressList.filter((p: any) => p.blockId === block.id);
 
     const totalFloors     = block.totalFloors ?? 0;
     const completedFloors = blockProgress.filter(
       (p: any) => p.status === "COMPLETED"
     ).length;
-    const startedFloors   = blockProgress.length; // any entry means floor is started
+    const startedFloors   = blockProgress.length;
 
-    // Group progress by floor
     const floorMap: Record<string, any[]> = {};
     for (const p of blockProgress) {
-      const floorKey = p.floorName ?? p.floor ?? "General";
+      const floorKey = p.floor?.floorName ?? "General";
       if (!floorMap[floorKey]) floorMap[floorKey] = [];
       floorMap[floorKey].push(p);
     }
@@ -148,7 +156,6 @@ function buildBlockSummary(
         completedFloors === totalFloors && totalFloors > 0 ? "COMPLETED"
         : startedFloors > 0                               ? "IN_PROGRESS"
         : "NOT_STARTED",
-      // FIX 2: floor-level breakdown instead of raw progressRecords
       floorDetails,
     };
   });
@@ -161,7 +168,12 @@ function resolveStageDetail(
   interiorBlocks: any[],
   exteriorBlocks: any[],
   totalSuperFloors: number,
-  completedSuperFloors: number
+  completedSuperFloors: number,
+  superStructureProgress: any[],
+  interiorsProgress: any[],
+  exteriorsProgress: any[],
+  developmentWorkRecords: any[],
+  takeoverDevelopmentWorkRecords: any[]
 ): Record<string, any> {
   switch (key) {
 
@@ -197,50 +209,56 @@ function resolveStageDetail(
         totalBlocks:       project.blocks.length,
         totalFloors:       totalSuperFloors,
         completedFloors:   completedSuperFloors,
-        qualityChecked:    !!project.superStructureQuality,
-        // blocks has floorDetails grouped by floor (no duplicate progressRecords)
+        qualityChecked:
+          superStructureProgress.length > 0 &&
+          superStructureProgress.every((p: any) => p.status === "COMPLETED"),
         blocks:            superStructureBlocks,
-        qualityRecord:     project.superStructureQuality ?? null,
+        qualityRecord:     null, // no separate quality-check model in current schema
       };
 
     case "Non Superstructure Stage":
       return {
         hasSuperStructure: false,
-        qualityChecked:    !!project.superStructureQuality,
-        progressCount:     project.SuperStructureProgress.length,
+        qualityChecked:
+          superStructureProgress.length > 0 &&
+          superStructureProgress.every((p: any) => p.status === "COMPLETED"),
+        progressCount:     superStructureProgress.length,
         blocks:            superStructureBlocks,
-        qualityRecord:     project.superStructureQuality ?? null,
+        qualityRecord:     null,
       };
 
     case "Interiors":
       return {
         totalBlocks:    project.blocks.length,
-        qualityChecked: !!project.interiorsQuality,
-        // FIX 1: interiorBlocks now correctly matches null-block progress entries
+        qualityChecked:
+          interiorsProgress.length > 0 &&
+          interiorsProgress.every((p: any) => p.status === "COMPLETED"),
         blocks:         interiorBlocks,
-        qualityRecord:  project.interiorsQuality ?? null,
+        qualityRecord:  null,
       };
 
     case "Exteriors":
       return {
         totalBlocks:    project.blocks.length,
-        qualityChecked: !!project.exteriorsQuality,
+        qualityChecked:
+          exteriorsProgress.length > 0 &&
+          exteriorsProgress.every((p: any) => p.status === "COMPLETED"),
         blocks:         exteriorBlocks,
-        qualityRecord:  project.exteriorsQuality ?? null,
+        qualityRecord:  null,
       };
 
     case "Development Work":
       return {
-        recordCount: project.DevelopmentWork.length,
-        records:     project.DevelopmentWork,
+        recordCount: developmentWorkRecords.length,
+        records:     developmentWorkRecords,
       };
 
     case "Take Over":
       return {
         buildingInspectionCount: project.TakeoverBuildingInsepction.length,
-        developmentWorkCount:    project.TakeoverDevelopmentWork.length,
+        developmentWorkCount:    takeoverDevelopmentWorkRecords.length,
         buildingInspections:     project.TakeoverBuildingInsepction,
-        developmentWorks:        project.TakeoverDevelopmentWork,
+        developmentWorks:        takeoverDevelopmentWorkRecords,
       };
 
     default:
@@ -336,88 +354,29 @@ export const getAdminDashboardReportService = async ({
         foundationQualityChecks:    { where: { isActive: true } },
         plinthStages:               { where: { isActive: true } },
 
-        // superStructures:        { where: { isActive: true } },
-        // SuperStructureProgress: { where: { isActive: true } },
-        // superStructureQuality:  true,
-
-        // interiorsProgress: { where: { isActive: true } },
-        // interiorsQuality:  true,
-
-        // exteriorsProgress: { where: { isActive: true } },
-        // exteriorsQuality:  true,
-
+        // FIX: superStructures -> blocks (project_block) + nested floors (project_floor)
         blocks: {
-  include: {
-    floors: true,
-    superStructureProgresses: {
-      include: {
-        quality: true,
-        floor: true,
-      },
-      where: {
-        isActive: true,
-      },
-    },
-    interiorsProgresses: {
-      include: {
-        quality: true,
-        floor: true,
-      },
-      where: {
-        isActive: true,
-      },
-    },
-    exteriorsProgresses: {
-      include: {
-        quality: true,
-        floor: true,
-      },
-      where: {
-        isActive: true,
-      },
-    },
-  },
-},
+          include: { floors: { orderBy: { floorNumber: "asc" } } },
+        },
 
-floors: true,
+        // FIX: SuperStructureProgress / interiorsProgress / exteriorsProgress
+        // are now all rows of inspection_progress, split below by module.name
+        inspectionProgresses: {
+          where:   { isActive: true },
+          include: { module: true, stage: true, block: true, floor: true },
+        },
 
-SuperStructureProgress: {
-  where: {
-    isActive: true,
-  },
-  include: {
-    block: true,
-    floor: true,
-    quality: true,
-  },
-},
+        // FIX: superStructureQuality / interiorsQuality / exteriorsQuality
+        // no longer exist as separate models — no replacement include for these
 
-interiorsProgress: {
-  where: {
-    isActive: true,
-  },
-  include: {
-    block: true,
-    floor: true,
-    quality: true,
-  },
-},
-
-exteriorsProgress: {
-  where: {
-    isActive: true,
-  },
-  include: {
-    block: true,
-    floor: true,
-    quality: true,
-  },
-},
-
-        BuildingInspection:         { where: { isActive: true } },
-        DevelopmentWork:            { where: { isActive: true } },
-        TakeoverBuildingInsepction: { where: { isActive: true } },
-        TakeoverDevelopmentWork:    { where: { isActive: true } },
+        BuildingInspection: {
+          where:   { isActive: true },
+          include: { developmentWork: true }, // FIX: DevelopmentWork is nested here now
+        },
+        TakeoverBuildingInsepction: {
+          where:   { isActive: true },
+          include: { developmentWork: true }, // FIX: TakeoverDevelopmentWork is nested here now
+        },
 
         projectHistories: {
           where:   { isActive: true },
@@ -450,32 +409,47 @@ exteriorsProgress: {
       })
       .filter((k): k is StageKey => k !== null);
 
+    // FIX: split the unified inspection_progress list by module name
+    // (replacement for SuperStructureProgress / interiorsProgress / exteriorsProgress)
+    const allProgress: any[] = project.inspectionProgresses ?? [];
+    const superStructureProgress = allProgress.filter(
+      (p: any) => p.module?.name === FRAMED_MODULE || p.module?.name === LOAD_BEARING_MODULE
+    );
+    const interiorsProgress = allProgress.filter((p: any) => p.module?.name === INTERIOR_MODULE);
+    const exteriorsProgress = allProgress.filter((p: any) => p.module?.name === EXTERIOR_MODULE);
+
+    // FIX: DevelopmentWork / TakeoverDevelopmentWork flattened out of the nested includes
+    const developmentWorkRecords = (project.BuildingInspection ?? [])
+      .map((b: any) => b.developmentWork)
+      .filter((d: any) => !!d);
+
+    const takeoverDevelopmentWorkRecords = (project.TakeoverBuildingInsepction ?? [])
+      .map((t: any) => t.developmentWork)
+      .filter((d: any) => !!d);
+
     // ── Block summaries ──
-    const superStructureBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.blocks, project.SuperStructureProgress, "blockName")
-      : [];
+    const superStructureBlocks = buildBlockSummary(project.blocks, superStructureProgress);
+    const interiorBlocks       = buildBlockSummary(project.blocks, interiorsProgress);
+    const exteriorBlocks       = buildBlockSummary(project.blocks, exteriorsProgress);
 
     const totalSuperFloors     = superStructureBlocks.reduce((acc: number, b: any) => acc + b.totalFloors, 0);
     const completedSuperFloors = superStructureBlocks.reduce((acc: number, b: any) => acc + b.completedFloors, 0);
-
-    // FIX 1: interiors/exteriors use "block" field (can be null in DB)
-    const interiorBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.blocks, project.interiorsProgress, "block")
-      : [];
-
-    const exteriorBlocks = project.hasSuperStructure
-      ? buildBlockSummary(project.blocks, project.exteriorsProgress, "block")
-      : [];
 
     // ── Build stages object ──
     const stages: Record<string, any> = {};
 
     for (const stageKey of selectedStageKeys) {
-      const { started, completed } = resolveStageStatus(stageKey, project);
+      const { started, completed } = resolveStageStatus(
+        stageKey, project,
+        superStructureProgress, interiorsProgress, exteriorsProgress,
+        developmentWorkRecords, takeoverDevelopmentWorkRecords
+      );
       const detail = resolveStageDetail(
         stageKey, project,
         superStructureBlocks, interiorBlocks, exteriorBlocks,
-        totalSuperFloors, completedSuperFloors
+        totalSuperFloors, completedSuperFloors,
+        superStructureProgress, interiorsProgress, exteriorsProgress,
+        developmentWorkRecords, takeoverDevelopmentWorkRecords
       );
 
       stages[stageKey] = {
@@ -514,12 +488,12 @@ exteriorsProgress: {
       project.foundationProgresses.length > 0        ||
       project.foundationQualityChecks.length > 0     ||
       project.plinthStages.length > 0                ||
-      project.SuperStructureProgress.length > 0      ||
-      project.interiorsProgress.length > 0           ||
-      project.exteriorsProgress.length > 0           ||
-      project.DevelopmentWork.length > 0             ||
+      superStructureProgress.length > 0              ||
+      interiorsProgress.length > 0                   ||
+      exteriorsProgress.length > 0                   ||
+      developmentWorkRecords.length > 0              ||
       project.TakeoverBuildingInsepction.length > 0  ||
-      project.TakeoverDevelopmentWork.length > 0;
+      takeoverDevelopmentWorkRecords.length > 0;
 
     const allCompleted = selectedStageCount > 0 && completedStages === selectedStageCount;
 
@@ -553,7 +527,7 @@ exteriorsProgress: {
 
       stages,
 
-      // FIX 2: top-level superStructure no longer duplicates — just block metadata
+      // FIX: superStructures -> blocks
       superStructure: project.blocks.map((b: any) => ({
         blockName:   b.blockName,
         totalFloors: b.totalFloors ?? 0,
